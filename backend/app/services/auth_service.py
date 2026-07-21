@@ -52,8 +52,10 @@ class AuthService:
 
     def hash_password(self, password: str) -> str:
         """Hash a plaintext password using bcrypt."""
-        return pwd_context.hash(password)
+        safe_password = password[:72]
+        return pwd_context.hash(safe_password)
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a plaintext password against a stored bcrypt hash."""
-        return pwd_context.verify(plain_password, hashed_password)
+        safe_password = plain_password[:72]
+        return pwd_context.verify(safe_password, hashed_password)
