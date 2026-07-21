@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+env/
+
+# Node
+node_modules/
+dist/
+build/
+coverage/
+
+# Environment files
+.env
+.env.*
+
+# Databases
+*.db
+*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db
