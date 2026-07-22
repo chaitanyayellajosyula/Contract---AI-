@@ -1,11 +1,11 @@
 import { NavLink } from 'react-router-dom'
 
 const items = [
-  { to: '/', label: 'Mission Control' },
-  { to: '/jobs', label: 'Live Opportunities' },
+  { to: '/', label: 'Dashboard' },
+  { to: '/companies', label: 'Companies' },
   { to: '/vendors', label: 'Vendors' },
-  { to: '/recruiters', label: 'Recruiters' },
-  { to: '/resume-ai', label: 'Resume AI' },
+  { to: '/vendor-contacts', label: 'Vendor Contacts' },
+  { to: '/jobs', label: 'Jobs' },
   { to: '/analytics', label: 'Analytics' },
   { to: '/settings', label: 'Settings' },
 ]
