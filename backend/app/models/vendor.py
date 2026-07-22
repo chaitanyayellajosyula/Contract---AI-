@@ -21,3 +21,4 @@ class Vendor(Base):
 
     company: Mapped["Company"] = relationship(back_populates="vendors")
     recruiters: Mapped[list["Recruiter"]] = relationship(back_populates="vendor", cascade="all, delete-orphan")
+    contacts: Mapped[list["VendorContact"]] = relationship(back_populates="vendor", cascade="all, delete-orphan")
