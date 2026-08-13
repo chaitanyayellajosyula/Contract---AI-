@@ -252,3 +252,29 @@ def test_recruiter_cannot_delete_different_company_vendor():
     response = client.delete(f"/vendors/{vendor_id}", headers=headers_a)
 
     assert response.status_code == 404
+
+
+def test_non_manager_role_cannot_access_company_scoped_vendors():
+    company_a = _create_company("Company A")
+    member = _create_user("member@example.com", "Member", company_a, role=UserRole.LEGACY_MEMBER.value)
+
+    db = SessionLocal()
+    try:
+        vendor = Vendor(name="Vendor A", email="vendor_a@example.com", company_id=company_a.id)
+        db.add(vendor)
+        db.commit()
+        db.refresh(vendor)
+        vendor_id = vendor.id
+    finally:
+        db.close()
+
+    headers = _auth_headers_for("member@example.com")
+    get_response = client.get(f"/vendors/{vendor_id}", headers=headers)
+    assert get_response.status_code == 404
+
+    create_response = client.post(
+        "/vendors",
+        json={"name": "Blocked Vendor", "email": "blocked@example.com"},
+        headers=headers,
+    )
+    assert create_response.status_code == 403

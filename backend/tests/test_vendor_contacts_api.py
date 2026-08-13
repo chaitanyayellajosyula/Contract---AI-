@@ -274,3 +274,35 @@ def test_duplicate_email_returns_409():
         headers=headers,
     )
     assert response2.status_code == 409
+
+
+def test_non_manager_role_cannot_access_company_scoped_contacts():
+    company_a = _create_company("Company A")
+    member = _create_user("member@example.com", "Member", company_a, role=UserRole.LEGACY_MEMBER.value)
+    vendor_a = _create_vendor("Vendor A", company_a)
+
+    db = SessionLocal()
+    try:
+        contact = VendorContact(
+            vendor_id=vendor_a.id,
+            full_name="Ada",
+            email="ada@example.com",
+        )
+        db.add(contact)
+        db.commit()
+        db.refresh(contact)
+        contact_id = contact.id
+    finally:
+        db.close()
+
+    headers = _auth_headers_for("member@example.com")
+    get_response = client.get(f"/vendor-contacts/{contact_id}", headers=headers)
+    assert get_response.status_code == 404
+
+    create_response = client.post(
+        f"/vendor-contacts/{vendor_a.id}",
+        json={"full_name": "Grace", "email": "grace@example.com"},
+        headers=headers,
+    )
+    assert create_response.status_code == 403
+
