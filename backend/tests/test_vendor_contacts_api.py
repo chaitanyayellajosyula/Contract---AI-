@@ -1,8 +1,30 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from app.core.database import SessionLocal
 from app.main import app
+from app.models.vendor_contact import VendorContact
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def isolate_vendor_contact_state():
+    db = SessionLocal()
+    try:
+        db.query(VendorContact).delete()
+        db.commit()
+    finally:
+        db.close()
+
+    yield
+
+    db = SessionLocal()
+    try:
+        db.query(VendorContact).delete()
+        db.commit()
+    finally:
+        db.close()
 
 
 def test_create_get_list_update_delete_vendor_contacts():
