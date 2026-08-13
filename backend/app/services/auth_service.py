@@ -28,7 +28,7 @@ class AuthService:
             full_name=data.full_name,
             email=data.email,
             hashed_password=self.hash_password(data.password),
-            role="member",
+            role="RECRUITER",
             is_active=True,
         )
         return self.repository.create_user(user)

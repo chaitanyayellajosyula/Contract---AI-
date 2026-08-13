@@ -9,12 +9,5 @@ Base = declarative_base()
 
 
 def initialize_database() -> None:
-    """Create or refresh the development database schema to match the current models."""
-    inspector = inspect(engine)
-    if inspector.has_table("users"):
-        columns = {column["name"] for column in inspector.get_columns("users")}
-        expected = {"id", "full_name", "email", "hashed_password", "role", "is_active", "created_at", "updated_at"}
-        if columns != expected:
-            Base.metadata.drop_all(bind=engine)
-
+    """Create any missing tables without destroying the existing database schema."""
     Base.metadata.create_all(bind=engine)

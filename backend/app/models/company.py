@@ -19,5 +19,6 @@ class Company(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
+    users: Mapped[list["User"]] = relationship(back_populates="company")
     vendors: Mapped[list["Vendor"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     candidates: Mapped[list["Candidate"]] = relationship(back_populates="company", cascade="all, delete-orphan")
