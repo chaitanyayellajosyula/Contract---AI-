@@ -5,9 +5,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class VendorContactCreate(BaseModel):
-    """Schema for creating a new vendor contact."""
+    """Schema for creating a new vendor contact.
+    
+    Note: vendor_id is determined by the authenticated user's company context.
+    Clients cannot specify the vendor.
+    """
 
-    vendor_id: int
     full_name: Annotated[str, Field(min_length=1, max_length=255)]
     email: Annotated[str, Field(min_length=1, max_length=255)]
     phone: str | None = None
@@ -17,9 +20,11 @@ class VendorContactCreate(BaseModel):
 
 
 class VendorContactUpdate(BaseModel):
-    """Schema for patching an existing vendor contact."""
+    """Schema for patching an existing vendor contact.
+    
+    Note: vendor_id cannot be modified. Contacts are bound to their vendor.
+    """
 
-    vendor_id: int | None = None
     full_name: str | None = None
     email: str | None = None
     phone: str | None = None
