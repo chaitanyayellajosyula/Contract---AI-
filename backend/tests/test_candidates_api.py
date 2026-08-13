@@ -5,24 +5,30 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.models.candidate import Candidate
 from app.models.company import Company
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.services.auth_service import AuthService
 
 client = TestClient(app)
 
 
-def _create_user(email: str, full_name: str = "Recruiter") -> User:
+def _create_user(email: str, full_name: str = "Recruiter", company: Company | None = None) -> User:
     db = SessionLocal()
     try:
         existing = db.query(User).filter(User.email == email).first()
         if existing is not None:
+            # If user exists but company_id doesn't match, update it
+            if company and existing.company_id != company.id:
+                existing.company_id = company.id
+                db.commit()
+                db.refresh(existing)
             return existing
 
         user = User(
             full_name=full_name,
             email=email,
             hashed_password=AuthService(db).hash_password("Password123!"),
-            role="member",
+            role=UserRole.RECRUITER.value,
+            company_id=company.id if company else None,
             is_active=True,
         )
         db.add(user)
@@ -69,14 +75,13 @@ def setup_function():
 
 
 def test_create_candidate_and_ownership():
-    user = _create_user("rahul@example.com", "Rahul")
     company = _create_company("Acme")
+    user = _create_user("rahul@example.com", "Rahul", company)
     headers = _auth_headers_for("rahul@example.com")
 
     response = client.post(
         "/candidates",
         json={
-            "company_id": company.id,
             "first_name": "Ava",
             "last_name": "Stone",
             "email": "ava@example.com",
@@ -89,13 +94,13 @@ def test_create_candidate_and_ownership():
     assert response.status_code == 201
     payload = response.json()
     assert payload["owner_user_id"] == user.id
+    assert payload["company_id"] == company.id
     assert payload["email"] == "ava@example.com"
 
     response = client.post(
         "/candidates",
         json={
             "owner_user_id": 99999,
-            "company_id": company.id,
             "first_name": "Mallory",
             "last_name": "Jones",
             "email": "mallory@example.com",
@@ -104,12 +109,13 @@ def test_create_candidate_and_ownership():
     )
     assert response.status_code == 201
     assert response.json()["owner_user_id"] == user.id
+    assert response.json()["company_id"] == company.id
 
 
 def test_list_candidates_and_privacy_between_recruiters():
-    recruiter_a = _create_user("rahul2@example.com", "Rahul")
-    recruiter_b = _create_user("priya@example.com", "Priya")
     company = _create_company("Beta")
+    recruiter_a = _create_user("rahul2@example.com", "Rahul", company)
+    recruiter_b = _create_user("priya@example.com", "Priya", company)
 
     db = SessionLocal()
     try:
@@ -151,9 +157,9 @@ def test_list_candidates_and_privacy_between_recruiters():
 
 
 def test_get_update_delete_candidate_owner_only():
-    recruiter_a = _create_user("owner1@example.com", "Owner One")
-    recruiter_b = _create_user("owner2@example.com", "Owner Two")
     company = _create_company("Gamma")
+    recruiter_a = _create_user("owner1@example.com", "Owner One", company)
+    recruiter_b = _create_user("owner2@example.com", "Owner Two", company)
 
     db = SessionLocal()
     try:
@@ -215,8 +221,8 @@ def test_get_update_delete_candidate_owner_only():
 
 
 def test_owner_cannot_be_changed_and_not_found_is_404():
-    recruiter = _create_user("owner3@example.com", "Owner Three")
     company = _create_company("Delta")
+    recruiter = _create_user("owner3@example.com", "Owner Three", company)
 
     db = SessionLocal()
     try:

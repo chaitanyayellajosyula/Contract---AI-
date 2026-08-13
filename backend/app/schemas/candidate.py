@@ -5,9 +5,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CandidateCreate(BaseModel):
-    """Schema for creating a new candidate record."""
+    """Schema for creating a new candidate record.
+    
+    Note: company_id and owner_user_id are derived from the authenticated user's context.
+    Clients cannot specify these fields; they are set server-side for security.
+    """
 
-    company_id: int
     first_name: Annotated[str, Field(min_length=1, max_length=255)]
     last_name: Annotated[str, Field(min_length=1, max_length=255)]
     email: Annotated[str, Field(min_length=1, max_length=255)]
@@ -25,9 +28,12 @@ class CandidateCreate(BaseModel):
 
 
 class CandidateUpdate(BaseModel):
-    """Schema for patching an existing candidate record."""
+    """Schema for patching an existing candidate record.
+    
+    Note: owner_user_id and company_id cannot be modified. These security fields
+    are protected from client tampering. Only business data fields can be updated.
+    """
 
-    company_id: int | None = None
     first_name: str | None = None
     last_name: str | None = None
     email: str | None = None
