@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field
 class CandidateCreate(BaseModel):
     """Schema for creating a new candidate record."""
 
-    owner_user_id: int
     company_id: int
     first_name: Annotated[str, Field(min_length=1, max_length=255)]
     last_name: Annotated[str, Field(min_length=1, max_length=255)]
@@ -28,7 +27,6 @@ class CandidateCreate(BaseModel):
 class CandidateUpdate(BaseModel):
     """Schema for patching an existing candidate record."""
 
-    owner_user_id: int | None = None
     company_id: int | None = None
     first_name: str | None = None
     last_name: str | None = None
