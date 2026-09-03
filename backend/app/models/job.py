@@ -28,6 +28,9 @@ class Job(Base):
     bookmarked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
     recruiter_id: Mapped[int | None] = mapped_column(ForeignKey("recruiters.id"), nullable=True, index=True)
 
+    company: Mapped["Company | None"] = relationship(back_populates="jobs")
     recruiter: Mapped["Recruiter"] = relationship(back_populates="jobs")
+    submissions: Mapped[list["Submission"]] = relationship(back_populates="job", cascade="all, delete-orphan")

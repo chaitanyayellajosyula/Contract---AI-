@@ -13,3 +13,9 @@
 - Authentication and users
 - Contract ingestion and processing workflows
 - Integrations and analytics
+
+## Sprint 6.6 - Candidate Submission Workflow
+
+- Add company-scoped submissions linking candidates to jobs
+- Enforce recruiter ownership and company-admin visibility boundaries
+- Support submission status progression and duplicate prevention

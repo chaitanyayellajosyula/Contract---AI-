@@ -22,3 +22,5 @@ class Company(Base):
     users: Mapped[list["User"]] = relationship(back_populates="company")
     vendors: Mapped[list["Vendor"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     candidates: Mapped[list["Candidate"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    jobs: Mapped[list["Job"]] = relationship(back_populates="company")
+    submissions: Mapped[list["Submission"]] = relationship(back_populates="company", cascade="all, delete-orphan")

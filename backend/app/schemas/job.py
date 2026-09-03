@@ -21,6 +21,7 @@ class JobCreate(BaseModel):
     expires_at: datetime | None = None
     viewed: bool = False
     bookmarked: bool = False
+    company_id: int | None = None
     recruiter_id: int | None = None
 
 
@@ -41,6 +42,7 @@ class JobUpdate(BaseModel):
     expires_at: datetime | None = None
     viewed: bool | None = None
     bookmarked: bool | None = None
+    company_id: int | None = None
     recruiter_id: int | None = None
 
 
@@ -64,6 +66,7 @@ class JobResponse(BaseModel):
     expires_at: datetime | None = None
     viewed: bool
     bookmarked: bool
+    company_id: int | None = None
     created_at: datetime
     updated_at: datetime
     recruiter_id: int | None = None

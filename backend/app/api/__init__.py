@@ -3,6 +3,7 @@ from .candidates import router as candidates_router
 from .companies import router as companies_router
 from .dashboard import router as dashboard_router
 from .jobs import router as jobs_router
+from .submissions import router as submissions_router
 from .recruiters import router as recruiters_router
 from .vendor_contacts import router as vendor_contacts_router
 from .vendors import router as vendors_router

@@ -33,3 +33,4 @@ class Candidate(Base):
 
     owner: Mapped["User"] = relationship(back_populates="candidates")
     company: Mapped["Company"] = relationship(back_populates="candidates")
+    submissions: Mapped[list["Submission"]] = relationship(back_populates="candidate", cascade="all, delete-orphan")
