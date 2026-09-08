@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.dependencies import get_db
-from app.models.submission import Submission
+from app.models.submission import Submission, SubmissionStatus
 from app.models.user import User
-from app.schemas.submission import SubmissionCreate, SubmissionResponse, SubmissionStatusUpdate
+from app.schemas.submission import SubmissionCreate, SubmissionHistoryResponse, SubmissionResponse, SubmissionStatusUpdate
 from app.services.submission_service import SubmissionService
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
@@ -17,8 +17,14 @@ def create_submission(payload: SubmissionCreate, db: Session = Depends(get_db), 
 
 
 @router.get("", response_model=list[SubmissionResponse])
-def list_submissions(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> list[Submission]:
-    return SubmissionService(db).list_for_user(current_user)
+def list_submissions(
+    status_filter: SubmissionStatus | None = Query(default=None, alias="status"),
+    job_id: int | None = Query(default=None, gt=0),
+    candidate_id: int | None = Query(default=None, gt=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[Submission]:
+    return SubmissionService(db).list_for_user(current_user, status_filter.value if status_filter else None, job_id, candidate_id)
 
 
 @router.get("/{submission_id}", response_model=SubmissionResponse)
@@ -35,6 +41,14 @@ def update_submission(submission_id: int, payload: SubmissionStatusUpdate, db: S
     if submission is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
     return submission
+
+
+@router.get("/{submission_id}/history", response_model=list[SubmissionHistoryResponse])
+def get_submission_history(submission_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> list:
+    history = SubmissionService(db).history_for_user(submission_id, current_user)
+    if history is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+    return history
 
 
 @router.delete("/{submission_id}", status_code=status.HTTP_204_NO_CONTENT)

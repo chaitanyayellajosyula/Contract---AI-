@@ -16,7 +16,7 @@ class SubmissionCreate(BaseModel):
 
 
 class SubmissionStatusUpdate(BaseModel):
-    status: SubmissionStatusValue
+    status: SubmissionStatusValue | None = None
     notes: str | None = None
 
 
@@ -32,3 +32,42 @@ class SubmissionResponse(BaseModel):
     notes: str | None = None
     created_at: datetime
     updated_at: datetime
+    candidate: "CandidateSummary"
+    job: "JobSummary"
+    company: "CompanySummary"
+
+
+class CandidateSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    first_name: str
+    last_name: str
+    email: str
+
+
+class JobSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    location: str | None = None
+
+
+class CompanySummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
+
+class SubmissionHistoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    submission_id: int
+    from_status: str | None = None
+    to_status: str
+    changed_by_user_id: int
+    notes: str | None = None
+    created_at: datetime

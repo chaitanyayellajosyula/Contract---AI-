@@ -6,6 +6,7 @@ const items = [
   { to: '/vendors', label: 'Vendors' },
   { to: '/vendor-contacts', label: 'Vendor Contacts' },
   { to: '/jobs', label: 'Jobs' },
+  { to: '/submissions', label: 'Submissions' },
   { to: '/analytics', label: 'Analytics' },
   { to: '/settings', label: 'Settings' },
 ]

@@ -9,6 +9,7 @@ import ResumeAIPage from './pages/ResumeAIPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import SettingsPage from './pages/SettingsPage'
 import CompaniesPage from './pages/CompaniesPage'
+import SubmissionsPage from './pages/SubmissionsPage'
 
 const router = createBrowserRouter([
   {
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <MissionControlPage /> },
       { path: 'jobs', element: <JobsPage /> },
+      { path: 'submissions', element: <SubmissionsPage /> },
       { path: 'companies', element: <CompaniesPage /> },
       { path: 'vendors', element: <VendorsPage /> },
       { path: 'recruiters', element: <RecruitersPage /> },

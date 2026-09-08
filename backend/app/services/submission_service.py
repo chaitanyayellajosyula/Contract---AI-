@@ -1,8 +1,9 @@
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
-from app.models.submission import Submission, SubmissionStatus
+from app.models.submission import Submission, SubmissionStatus, SubmissionStatusHistory
 from app.models.user import User, UserRole
 from app.repositories.submission_repository import SubmissionRepository
 from app.schemas.submission import SubmissionCreate, SubmissionStatusUpdate
@@ -25,13 +26,17 @@ class SubmissionService:
             raise self._not_found()
         if self.repository.get_for_candidate_and_job(candidate.id, job.id) is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Candidate is already submitted to this job")
-        return self.repository.create(Submission(candidate_id=candidate.id, job_id=job.id, company_id=current_user.company_id, submitted_by_user_id=current_user.id, status=SubmissionStatus.SUBMITTED.value, notes=payload.notes))
+        try:
+            return self.repository.create(Submission(candidate_id=candidate.id, job_id=job.id, company_id=current_user.company_id, submitted_by_user_id=current_user.id, status=SubmissionStatus.SUBMITTED.value, notes=payload.notes))
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Candidate is already submitted to this job") from exc
 
-    def list_for_user(self, current_user: User) -> list[Submission]:
+    def list_for_user(self, current_user: User, status_filter: str | None = None, job_id: int | None = None, candidate_id: int | None = None) -> list[Submission]:
         if current_user.role == UserRole.RECRUITER.value:
-            return self.repository.list_for_owner(current_user.id)
+            return self.repository.list_for_owner(current_user.id, status_filter, job_id, candidate_id)
         if current_user.role == UserRole.COMPANY_ADMIN.value and current_user.company_id is not None:
-            return self.repository.list_for_company(current_user.company_id)
+            return self.repository.list_for_company(current_user.company_id, status_filter, job_id, candidate_id)
         return []
 
     def get_for_user(self, submission_id: int, current_user: User) -> Submission | None:
@@ -40,7 +45,21 @@ class SubmissionService:
 
     def update_for_user(self, submission_id: int, current_user: User, payload: SubmissionStatusUpdate) -> Submission | None:
         submission = self.get_for_user(submission_id, current_user)
-        return None if submission is None else self.repository.update(submission, payload.model_dump(exclude_unset=True))
+        if submission is None:
+            return None
+        updates = payload.model_dump(exclude_unset=True)
+        requested_status = updates.get("status")
+        history = None
+        if requested_status is not None and requested_status != submission.status:
+            if requested_status not in self._allowed_transitions().get(submission.status, set()):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid submission status transition: {submission.status} -> {requested_status}")
+            history = SubmissionStatusHistory(submission=submission, from_status=submission.status, to_status=requested_status, changed_by_user_id=current_user.id, notes=updates.get("notes"))
+        return self.repository.update(submission, updates, history)
+
+    def history_for_user(self, submission_id: int, current_user: User) -> list[SubmissionStatusHistory] | None:
+        if self.get_for_user(submission_id, current_user) is None:
+            return None
+        return self.repository.list_history(submission_id)
 
     def delete_for_user(self, submission_id: int, current_user: User) -> bool:
         submission = self.get_for_user(submission_id, current_user)
@@ -53,6 +72,14 @@ class SubmissionService:
         if user.role == UserRole.RECRUITER.value:
             return submission.candidate.owner_user_id == user.id
         return user.role == UserRole.COMPANY_ADMIN.value and submission.company_id == user.company_id
+
+    @staticmethod
+    def _allowed_transitions() -> dict[str, set[str]]:
+        return {
+            SubmissionStatus.SUBMITTED.value: {SubmissionStatus.REVIEWING.value, SubmissionStatus.REJECTED.value},
+            SubmissionStatus.REVIEWING.value: {SubmissionStatus.INTERVIEW.value, SubmissionStatus.REJECTED.value},
+            SubmissionStatus.INTERVIEW.value: {SubmissionStatus.PLACED.value, SubmissionStatus.REJECTED.value},
+        }
 
     @staticmethod
     def _job_company_id(job: Job | None) -> int | None:

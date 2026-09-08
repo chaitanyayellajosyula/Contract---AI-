@@ -19,3 +19,10 @@
 - Add company-scoped submissions linking candidates to jobs
 - Enforce recruiter ownership and company-admin visibility boundaries
 - Support submission status progression and duplicate prevention
+
+## Sprint 6.7 - Submission Review Workspace & Controlled Lifecycle
+
+- Add filtered submission review for recruiters and company admins
+- Enforce controlled submission status transitions
+- Record authorized submission status history
+- Integrate authenticated submission review in the frontend
