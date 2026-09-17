@@ -52,3 +52,15 @@
 - The process-local overlap protection is not a distributed lock and requires a single scheduler process in production
 - A future deployment can call `run_if_due` from a dedicated worker, cron wrapper, or managed job process without changing ingestion logic
 - LinkedIn scraping, browser automation, and paid APIs remain intentionally out of scope
+
+## Sprint 6.11 - Multi-Source Public Job Connectors
+
+- Support Greenhouse boards and Lever public job postings through the approved source registry
+- Greenhouse uses the public boards API: `https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true`; no credentials are required
+- Lever uses the public postings API: `https://api.lever.co/v0/postings/{site}?mode=json`; no credentials are required
+- Configure sources by registering a board or site with its source name, identifier, enabled state, connector type, and optional source settings
+- Both connectors preserve stable source job IDs, source URLs, titles, descriptions, locations, employment information when supplied, and publication timestamps when supplied
+- Public endpoint availability, response shape, and usage limits remain source-specific; clients should use responsible request rates and avoid aggressive parallel fetching
+- All sources use the existing IngestionService, source-plus-job-ID idempotency, update behavior, and ingestion audit records
+- LinkedIn scraping, authentication bypass, browser automation, paid APIs, and credential storage are intentionally excluded
+- Cross-source duplicate merging is deferred; the same posting from different sources remains as separate source records

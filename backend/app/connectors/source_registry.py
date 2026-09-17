@@ -1,7 +1,8 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from app.connectors.greenhouse.greenhouse_connector import GreenhouseConnector
+from app.connectors.lever.lever_connector import LeverConnector
 
 
 @dataclass(frozen=True)
@@ -12,6 +13,8 @@ class SourceConfiguration:
     identifier: str
     enabled: bool
     connector_factory: Callable[[str], Any]
+    connector_type: str = ""
+    settings: dict[str, Any] = field(default_factory=dict)
 
 
 class SourceRegistry:
@@ -34,6 +37,27 @@ class SourceRegistry:
                 identifier=board,
                 enabled=enabled,
                 connector_factory=GreenhouseConnector,
+                connector_type="greenhouse",
+            )
+        )
+
+    def register_lever_site(
+        self,
+        site: str,
+        enabled: bool = True,
+        settings: dict[str, Any] | None = None,
+    ) -> None:
+        site = site.strip()
+        if not site:
+            raise ValueError("Lever site is required")
+        self.register(
+            SourceConfiguration(
+                source="lever",
+                identifier=site,
+                enabled=enabled,
+                connector_factory=LeverConnector,
+                connector_type="lever",
+                settings=settings or {},
             )
         )
 
