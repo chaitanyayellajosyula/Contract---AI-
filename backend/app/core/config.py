@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import json
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 DATABASE_DIR = BASE_DIR / "database"
@@ -21,3 +22,14 @@ SCHEDULER_ENABLED = _env_bool("SCHEDULER_ENABLED", False)
 SCHEDULER_HOUR = int(os.getenv("SCHEDULER_HOUR", "5"))
 SCHEDULER_MINUTE = int(os.getenv("SCHEDULER_MINUTE", "0"))
 SCHEDULER_TIMEZONE = os.getenv("SCHEDULER_TIMEZONE", "America/New_York")
+
+
+def _discovery_candidates() -> list[dict[str, str]]:
+	try:
+		value = json.loads(os.getenv("DISCOVERY_CANDIDATES", "[]"))
+	except json.JSONDecodeError:
+		return []
+	return value if isinstance(value, list) and all(isinstance(item, dict) for item in value) else []
+
+
+DISCOVERY_CANDIDATES = _discovery_candidates()

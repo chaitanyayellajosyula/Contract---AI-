@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.connectors.source_registry import SourceConfiguration, SourceRegistry, source_registry
 from app.core.config import (
+    DISCOVERY_CANDIDATES,
     SCHEDULER_ENABLED,
     SCHEDULER_HOUR,
     SCHEDULER_MINUTE,
@@ -14,6 +15,7 @@ from app.core.config import (
 )
 from app.core.database import SessionLocal
 from app.services.ingestion_service import IngestionService
+from app.services.source_discovery_service import DiscoveryCandidate, SourceDiscoveryService
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +53,15 @@ class SchedulerService:
         registry: SourceRegistry = source_registry,
         session_factory: Callable[[], Any] = SessionLocal,
         ingestion_service_factory: Callable[..., IngestionService] = IngestionService,
+        discovery_service_factory: Callable[..., SourceDiscoveryService] = SourceDiscoveryService,
+        discovery_candidates: list[dict[str, str]] | None = None,
     ) -> None:
         self.settings = settings or SchedulerSettings()
         self.registry = registry
         self.session_factory = session_factory
         self.ingestion_service_factory = ingestion_service_factory
+        self.discovery_service_factory = discovery_service_factory
+        self.discovery_candidates = discovery_candidates if discovery_candidates is not None else DISCOVERY_CANDIDATES
         self._source_locks: dict[tuple[str, str], Lock] = {}
         self._locks_guard = Lock()
         self._last_due_date: date | None = None
@@ -104,12 +110,33 @@ class SchedulerService:
             return self._disabled_result()
 
         logger.info("scheduler_cycle_started")
+        discovery_result = self._run_discovery()
         results: list[dict[str, Any]] = []
         for configuration in self.registry.enabled_configurations():
             result = self._run_source(configuration)
             results.append(result)
         logger.info("scheduler_cycle_completed", extra={"source_count": len(results)})
-        return {"status": "completed", "results": results}
+        response = {"status": "completed", "results": results}
+        if discovery_result is not None:
+            response["discovery"] = discovery_result
+        return response
+
+    def _run_discovery(self) -> dict[str, Any] | None:
+        if not self.discovery_candidates:
+            return None
+        session = None
+        try:
+            session = self.session_factory()
+            candidates = [DiscoveryCandidate(**candidate) for candidate in self.discovery_candidates]
+            result = self.discovery_service_factory(session, registry=self.registry).discover(candidates)
+            logger.info("scheduler_discovery_completed", extra={"validated_count": result.get("validated", 0)})
+            return result
+        except Exception as exc:
+            logger.exception("scheduler_discovery_failed")
+            return {"status": "failed", "message": str(exc)}
+        finally:
+            if session is not None:
+                session.close()
 
     def _run_source(self, configuration: SourceConfiguration) -> dict[str, Any]:
         key = (configuration.source.lower(), configuration.identifier)

@@ -87,6 +87,18 @@ class SourceRegistry:
         """Return approved configurations that are enabled for execution."""
         return [configuration for configuration in self._configurations.values() if configuration.enabled]
 
+    def register_discovered(self, source: str, identifier: str, settings: dict[str, Any] | None = None) -> None:
+        """Register a validated board using the existing connector factories."""
+        handlers = {
+            "greenhouse": self.register_greenhouse_board,
+            "lever": self.register_lever_site,
+            "ashby": self.register_ashby_board,
+        }
+        handler = handlers.get(source.lower())
+        if handler is None:
+            raise ValueError(f"Unsupported discovered source: {source}")
+        handler(identifier)
+
 
 source_registry = SourceRegistry()
 source_registry.register_greenhouse_board("stripe")

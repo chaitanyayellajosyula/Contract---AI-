@@ -87,3 +87,16 @@
 - Keep source/application links external and explicit, with source metadata and descriptions available in the detail view
 - Existing ingestion, audit, source registry, scheduler, authorization, and submission workflows remain unchanged
 - Limitations: list pagination uses response metadata headers, and frontend status actions require an authenticated session
+
+## Sprint 8.1 - Automatic Source Discovery Foundation
+
+- Add a bounded, persisted source discovery service for explicit Greenhouse, Lever, and Ashby board candidates
+- Validate each candidate through its official public jobs endpoint before registering it as ingestion-eligible
+- Persist discovered board identity, endpoint, company/source metadata, validation state, timestamps, eligibility, and rejection reason
+- Persist discovery-run audit counts for candidates, discovered, validated, and rejected sources
+- Promote validated boards into the existing source registry so the existing IngestionService and scheduler perform ingestion without duplicated persistence logic
+- Configure deployment-provided candidates through `DISCOVERY_CANDIDATES` as a bounded JSON list; no arbitrary website crawling or fictional default boards are added
+- Scheduled cycles attempt discovery before normal source ingestion when candidates are configured, while preserving disabled-scheduler behavior, per-source locks, and failure isolation
+- Manual callers can invoke `SourceDiscoveryService.discover(...)`; no new public endpoint or authorization surface was added in this slice
+- Requests are limited to 25 candidates per discovery run and use the connectors' existing bounded public endpoint timeouts
+- LinkedIn scraping, browser automation, authentication bypass, CAPTCHA/rate-limit/robots circumvention, and credentialed sources remain excluded
