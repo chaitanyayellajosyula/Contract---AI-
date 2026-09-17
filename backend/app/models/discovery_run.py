@@ -25,3 +25,6 @@ class DiscoveryRun(Base):
     failed_provider_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     provider_results: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    selected_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    succeeded_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

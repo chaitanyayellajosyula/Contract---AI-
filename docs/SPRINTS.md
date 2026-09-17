@@ -123,3 +123,15 @@
 - The catalog is discovery-only seed data, not official ATS data; every row still passes existing official connector validation before eligibility, registry promotion, or ingestion
 - The repository is MIT licensed, but the third-party dataset's separate licensing/provenance should be treated cautiously and is not copied into this repository
 - Provider defaults cap each ATS directory at 25 rows per run, reject malformed/unsupported/duplicate rows, enforce response size and timeout limits, and preserve provider provenance
+
+## Sprint 8.3 - Controlled Automatic Ingestion
+
+- Connect validated discovery-promoted sources to the existing scheduler and IngestionService
+- Keep automatic ingestion disabled by default with `AUTOMATIC_INGESTION_ENABLED=false`
+- Configure `AUTOMATIC_INGESTION_MAX_SOURCES_PER_RUN=10`, `AUTOMATIC_INGESTION_MAX_JOBS_PER_SOURCE=100`, and `AUTOMATIC_INGESTION_TIMEOUT_SECONDS=30`
+- Run explicit/configured sources through their existing scheduler path, then select only validated active discovered sources not already configured explicitly
+- Select discovered sources deterministically by most recently validated timestamp and prevent duplicate source selection
+- Preserve official Greenhouse, Lever, and Ashby connector validation, source-plus-job identity, idempotency, updates, ingestion audit, and per-source failure isolation
+- Automatic ingestion never reads jobs from the third-party catalog directly; catalog entries remain discovery-only seeds
+- Discovery runs record automatic-ingestion selected, succeeded, and failed counts when a discovery run is present
+- No frontend changes, LinkedIn scraping, browser automation, arbitrary crawling, or unofficial ATS access were added

@@ -8,6 +8,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.connectors.source_registry import SourceConfiguration, SourceRegistry, source_registry
 from app.core.config import (
     AUTOMATIC_DISCOVERY_ENABLED,
+    AUTOMATIC_INGESTION_ENABLED,
+    AUTOMATIC_INGESTION_MAX_JOBS_PER_SOURCE,
+    AUTOMATIC_INGESTION_MAX_SOURCES_PER_RUN,
+    AUTOMATIC_INGESTION_TIMEOUT_SECONDS,
     ATS_CATALOG_DISCOVERY_ENABLED,
     ATS_CATALOG_MANIFEST_URL,
     DISCOVERY_CATALOG_ALLOWED_HOSTS,
@@ -23,6 +27,8 @@ from app.core.database import SessionLocal
 from app.services.ingestion_service import IngestionService
 from app.services.source_discovery_service import DiscoveryCandidate, SourceDiscoveryService
 from app.services.discovery_providers import AtsCompanyCatalogProvider, DiscoveryProvider, PublicJsonCatalogProvider
+from app.models.discovered_source import DiscoveredSource
+from app.models.discovery_run import DiscoveryRun
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +69,10 @@ class SchedulerService:
         discovery_service_factory: Callable[..., SourceDiscoveryService] = SourceDiscoveryService,
         discovery_candidates: list[dict[str, str]] | None = None,
         discovery_providers: list[DiscoveryProvider] | None = None,
+        automatic_ingestion_enabled: bool = AUTOMATIC_INGESTION_ENABLED,
+        max_automatic_sources: int = AUTOMATIC_INGESTION_MAX_SOURCES_PER_RUN,
+        max_automatic_jobs: int = AUTOMATIC_INGESTION_MAX_JOBS_PER_SOURCE,
+        automatic_timeout_seconds: int = AUTOMATIC_INGESTION_TIMEOUT_SECONDS,
     ) -> None:
         self.settings = settings or SchedulerSettings()
         self.registry = registry
@@ -71,6 +81,10 @@ class SchedulerService:
         self.discovery_service_factory = discovery_service_factory
         self.discovery_candidates = discovery_candidates if discovery_candidates is not None else DISCOVERY_CANDIDATES
         self.discovery_providers = discovery_providers if discovery_providers is not None else self._configured_providers()
+        self.automatic_ingestion_enabled = automatic_ingestion_enabled
+        self.max_automatic_sources = max(0, max_automatic_sources)
+        self.max_automatic_jobs = max(0, max_automatic_jobs)
+        self.automatic_timeout_seconds = max(1, automatic_timeout_seconds)
         self._source_locks: dict[tuple[str, str], Lock] = {}
         self._locks_guard = Lock()
         self._last_due_date: date | None = None
@@ -121,15 +135,52 @@ class SchedulerService:
         logger.info("scheduler_cycle_started")
         discovery_result = self._run_discovery()
         results: list[dict[str, Any]] = []
-        for configuration in self.registry.enabled_configurations():
+        configured_sources = self.registry.enabled_configurations(include_discovered=False)
+        for configuration in configured_sources:
             result = self._run_source(configuration)
             results.append(result)
+        automatic_sources = self._select_automatic_sources(configured_sources)
+        automatic_results = [self._run_source(configuration, automatic=True) for configuration in automatic_sources]
+        self._record_automatic_counts(discovery_result, automatic_results)
         logger.info("scheduler_cycle_completed", extra={"source_count": len(results)})
         response = {"status": "completed", "results": results}
         if discovery_result is not None:
             response["discovery"] = discovery_result
+        response["automatic_ingestion"] = {
+            "selected": len(automatic_sources),
+            "succeeded": sum(result.get("status") == "completed" for result in automatic_results),
+            "failed": sum(result.get("status") == "failed" for result in automatic_results),
+            "results": automatic_results,
+        }
         return response
 
+    def _select_automatic_sources(self, configured_sources: list[SourceConfiguration]) -> list[SourceConfiguration]:
+        if not self.automatic_ingestion_enabled or self.max_automatic_sources == 0:
+            return []
+        configured_keys = {(item.source.lower(), item.identifier) for item in configured_sources}
+        session = self.session_factory()
+        try:
+            records = session.query(DiscoveredSource).filter(
+                DiscoveredSource.eligible.is_(True),
+                DiscoveredSource.validation_status == "valid",
+                DiscoveredSource.status == "validated",
+            ).order_by(DiscoveredSource.last_validated_at.desc()).limit(self.max_automatic_sources * 2).all()
+            selected: list[SourceConfiguration] = []
+            seen: set[tuple[str, str]] = set()
+            for record in records:
+                key = (record.source.lower(), record.identifier)
+                if key in configured_keys or key in seen:
+                    continue
+                configuration = self.registry.resolve(record.source, record.identifier)
+                if configuration is None:
+                    continue
+                seen.add(key)
+                selected.append(configuration)
+                if len(selected) >= self.max_automatic_sources:
+                    break
+            return selected
+        finally:
+            session.close()
     def _run_discovery(self) -> dict[str, Any] | None:
         if not self.discovery_candidates and not self.discovery_providers:
             return None
@@ -171,7 +222,7 @@ class SchedulerService:
             logger.exception("discovery_provider_configuration_invalid")
         return providers
 
-    def _run_source(self, configuration: SourceConfiguration) -> dict[str, Any]:
+    def _run_source(self, configuration: SourceConfiguration, automatic: bool = False) -> dict[str, Any]:
         key = (configuration.source.lower(), configuration.identifier)
         with self._locks_guard:
             source_lock = self._source_locks.setdefault(key, Lock())
@@ -194,7 +245,15 @@ class SchedulerService:
                 extra={"source": configuration.source, "source_identifier": configuration.identifier},
             )
             ingestion_service = self.ingestion_service_factory(session, registry=self.registry)
-            result = ingestion_service.ingest(configuration.source, configuration.identifier)
+            if automatic:
+                result = ingestion_service.ingest(
+                    configuration.source,
+                    configuration.identifier,
+                    max_jobs=self.max_automatic_jobs,
+                    timeout_seconds=self.automatic_timeout_seconds,
+                )
+            else:
+                result = ingestion_service.ingest(configuration.source, configuration.identifier)
             logger.info(
                 "scheduler_source_completed",
                 extra={"source": configuration.source, "source_identifier": configuration.identifier},
@@ -216,6 +275,21 @@ class SchedulerService:
                 session.close()
             source_lock.release()
 
+    def _record_automatic_counts(self, discovery_result: dict[str, Any] | None, results: list[dict[str, Any]]) -> None:
+        run_id = discovery_result.get("run_id") if discovery_result else None
+        if run_id is None:
+            return
+        session = self.session_factory()
+        try:
+            run = session.get(DiscoveryRun, run_id)
+            if run is None:
+                return
+            run.selected_count = len(results)
+            run.succeeded_count = sum(result.get("status") == "completed" for result in results)
+            run.failed_count = sum(result.get("status") == "failed" for result in results)
+            session.commit()
+        finally:
+            session.close()
     @staticmethod
     def _disabled_result() -> dict[str, Any]:
         logger.info("scheduler_disabled")

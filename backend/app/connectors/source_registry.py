@@ -24,6 +24,7 @@ class SourceRegistry:
 
     def __init__(self) -> None:
         self._configurations: dict[tuple[str, str], SourceConfiguration] = {}
+        self._discovered_keys: set[tuple[str, str]] = set()
 
     def register(self, configuration: SourceConfiguration) -> None:
         key = (configuration.source.lower(), configuration.identifier)
@@ -83,9 +84,13 @@ class SourceRegistry:
             return None
         return configuration
 
-    def enabled_configurations(self) -> list[SourceConfiguration]:
+    def enabled_configurations(self, include_discovered: bool = True) -> list[SourceConfiguration]:
         """Return approved configurations that are enabled for execution."""
-        return [configuration for configuration in self._configurations.values() if configuration.enabled]
+        return [
+            configuration
+            for key, configuration in self._configurations.items()
+            if configuration.enabled and (include_discovered or key not in self._discovered_keys)
+        ]
 
     def register_discovered(self, source: str, identifier: str, settings: dict[str, Any] | None = None) -> None:
         """Register a validated board using the existing connector factories."""
@@ -98,6 +103,7 @@ class SourceRegistry:
         if handler is None:
             raise ValueError(f"Unsupported discovered source: {source}")
         handler(identifier)
+        self._discovered_keys.add((source.lower(), identifier))
 
 
 source_registry = SourceRegistry()

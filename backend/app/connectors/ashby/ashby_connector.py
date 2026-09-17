@@ -12,23 +12,26 @@ class AshbyConnector(BaseConnector):
 
     API_BASE = "https://api.ashbyhq.com/posting-api/job-board"
 
-    def __init__(self, board: str):
+    def __init__(self, board: str, timeout_seconds: int = 30):
         if not board or not board.strip():
             raise ValueError("Ashby board is required")
         self.board = board.strip()
+        self.timeout_seconds = timeout_seconds
 
     def connect(self) -> None:
         return None
 
     def fetch(self) -> list[dict[str, Any]]:
-        return self.fetch_jobs(self.board)
+        if self.timeout_seconds == 30:
+            return self.fetch_jobs(self.board)
+        return self.fetch_jobs(self.board, timeout=self.timeout_seconds)
 
     @classmethod
-    def fetch_jobs(cls, board: str) -> list[dict[str, Any]]:
+    def fetch_jobs(cls, board: str, timeout: int = 30) -> list[dict[str, Any]]:
         if not board or not board.strip():
             raise ValueError("Ashby board is required")
         url = f"{cls.API_BASE}/{board.strip()}"
-        with request.urlopen(url, timeout=30) as response:
+        with request.urlopen(url, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
         jobs = payload.get("jobs") if isinstance(payload, dict) else None
         return jobs if isinstance(jobs, list) else []

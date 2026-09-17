@@ -16,7 +16,13 @@ class IngestionService:
         self.registry = registry
         self.job_service = JobService(db)
 
-    def ingest(self, source: str, identifier: str) -> dict[str, Any]:
+    def ingest(
+        self,
+        source: str,
+        identifier: str,
+        max_jobs: int | None = None,
+        timeout_seconds: int | None = None,
+    ) -> dict[str, Any]:
         configuration = self.registry.resolve(source, identifier)
         if configuration is None:
             raise ValueError("Unsupported or disabled job source configuration")
@@ -33,11 +39,13 @@ class IngestionService:
         self.db.refresh(run)
 
         try:
-            connector = configuration.connector_factory(
-                configuration.identifier,
-                **configuration.settings,
-            )
+            connector_settings = dict(configuration.settings)
+            if timeout_seconds is not None:
+                connector_settings["timeout_seconds"] = timeout_seconds
+            connector = configuration.connector_factory(configuration.identifier, **connector_settings)
             raw_jobs = connector.fetch()
+            if max_jobs is not None:
+                raw_jobs = raw_jobs[:max_jobs]
             normalized_jobs = []
             for raw_job in raw_jobs:
                 normalized_jobs.append(connector.normalize_job(raw_job))

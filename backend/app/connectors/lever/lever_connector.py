@@ -12,23 +12,26 @@ class LeverConnector(BaseConnector):
 
     API_BASE = "https://api.lever.co/v0/postings"
 
-    def __init__(self, site: str):
+    def __init__(self, site: str, timeout_seconds: int = 30):
         if not site or not site.strip():
             raise ValueError("Lever site is required")
         self.site = site.strip()
+        self.timeout_seconds = timeout_seconds
 
     def connect(self) -> None:
         return None
 
     def fetch(self) -> list[dict[str, Any]]:
-        return self.fetch_jobs(self.site)
+        if self.timeout_seconds == 30:
+            return self.fetch_jobs(self.site)
+        return self.fetch_jobs(self.site, timeout=self.timeout_seconds)
 
     @classmethod
-    def fetch_jobs(cls, site: str) -> list[dict[str, Any]]:
+    def fetch_jobs(cls, site: str, timeout: int = 30) -> list[dict[str, Any]]:
         if not site or not site.strip():
             raise ValueError("Lever site is required")
         url = f"{cls.API_BASE}/{site.strip()}?mode=json"
-        with request.urlopen(url, timeout=30) as response:
+        with request.urlopen(url, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
         return payload if isinstance(payload, list) else []
 
