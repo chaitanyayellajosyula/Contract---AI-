@@ -25,6 +25,7 @@ const router = createBrowserRouter([
       { path: 'submissions', element: <SubmissionsPage /> },
       { path: 'companies', element: <CompaniesPage /> },
       { path: 'vendors', element: <VendorsPage /> },
+      { path: 'vendor-contacts', element: <VendorsPage /> },
       { path: 'recruiters', element: <RecruitersPage /> },
       { path: 'resume-ai', element: <ResumeAIPage /> },
       { path: 'analytics', element: <AnalyticsPage /> },
