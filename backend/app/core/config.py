@@ -33,3 +33,14 @@ def _discovery_candidates() -> list[dict[str, str]]:
 
 
 DISCOVERY_CANDIDATES = _discovery_candidates()
+AUTOMATIC_DISCOVERY_ENABLED = _env_bool("AUTOMATIC_DISCOVERY_ENABLED", False)
+DISCOVERY_CATALOG_URL = os.getenv("DISCOVERY_CATALOG_URL", "")
+DISCOVERY_CATALOG_PROVIDER = os.getenv("DISCOVERY_CATALOG_PROVIDER", "public_json_catalog")
+DISCOVERY_CATALOG_ALLOWED_HOSTS = tuple(
+	host.strip() for host in os.getenv("DISCOVERY_CATALOG_ALLOWED_HOSTS", "").split(",") if host.strip()
+)
+ATS_CATALOG_DISCOVERY_ENABLED = _env_bool("ATS_CATALOG_DISCOVERY_ENABLED", False)
+ATS_CATALOG_MANIFEST_URL = os.getenv(
+	"ATS_CATALOG_MANIFEST_URL",
+	"https://storage.stapply.ai/jobhive/v1/manifest.json",
+)

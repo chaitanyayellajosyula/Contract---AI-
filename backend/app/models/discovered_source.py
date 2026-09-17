@@ -26,3 +26,7 @@ class DiscoveredSource(Base):
     last_validated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    discovery_provider: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    discovery_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_discovered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    provider_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)

@@ -7,6 +7,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.connectors.source_registry import SourceConfiguration, SourceRegistry, source_registry
 from app.core.config import (
+    AUTOMATIC_DISCOVERY_ENABLED,
+    ATS_CATALOG_DISCOVERY_ENABLED,
+    ATS_CATALOG_MANIFEST_URL,
+    DISCOVERY_CATALOG_ALLOWED_HOSTS,
+    DISCOVERY_CATALOG_PROVIDER,
+    DISCOVERY_CATALOG_URL,
     DISCOVERY_CANDIDATES,
     SCHEDULER_ENABLED,
     SCHEDULER_HOUR,
@@ -16,6 +22,7 @@ from app.core.config import (
 from app.core.database import SessionLocal
 from app.services.ingestion_service import IngestionService
 from app.services.source_discovery_service import DiscoveryCandidate, SourceDiscoveryService
+from app.services.discovery_providers import AtsCompanyCatalogProvider, DiscoveryProvider, PublicJsonCatalogProvider
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +62,7 @@ class SchedulerService:
         ingestion_service_factory: Callable[..., IngestionService] = IngestionService,
         discovery_service_factory: Callable[..., SourceDiscoveryService] = SourceDiscoveryService,
         discovery_candidates: list[dict[str, str]] | None = None,
+        discovery_providers: list[DiscoveryProvider] | None = None,
     ) -> None:
         self.settings = settings or SchedulerSettings()
         self.registry = registry
@@ -62,6 +70,7 @@ class SchedulerService:
         self.ingestion_service_factory = ingestion_service_factory
         self.discovery_service_factory = discovery_service_factory
         self.discovery_candidates = discovery_candidates if discovery_candidates is not None else DISCOVERY_CANDIDATES
+        self.discovery_providers = discovery_providers if discovery_providers is not None else self._configured_providers()
         self._source_locks: dict[tuple[str, str], Lock] = {}
         self._locks_guard = Lock()
         self._last_due_date: date | None = None
@@ -122,13 +131,17 @@ class SchedulerService:
         return response
 
     def _run_discovery(self) -> dict[str, Any] | None:
-        if not self.discovery_candidates:
+        if not self.discovery_candidates and not self.discovery_providers:
             return None
         session = None
         try:
             session = self.session_factory()
             candidates = [DiscoveryCandidate(**candidate) for candidate in self.discovery_candidates]
-            result = self.discovery_service_factory(session, registry=self.registry).discover(candidates)
+            service = self.discovery_service_factory(session, registry=self.registry)
+            if self.discovery_providers:
+                result = service.discover_from_providers(self.discovery_providers, candidates)
+            else:
+                result = service.discover(candidates)
             logger.info("scheduler_discovery_completed", extra={"validated_count": result.get("validated", 0)})
             return result
         except Exception as exc:
@@ -137,6 +150,26 @@ class SchedulerService:
         finally:
             if session is not None:
                 session.close()
+
+    @staticmethod
+    def _configured_providers() -> list[DiscoveryProvider]:
+        providers: list[DiscoveryProvider] = []
+        if ATS_CATALOG_DISCOVERY_ENABLED:
+            try:
+                providers.append(AtsCompanyCatalogProvider(manifest_url=ATS_CATALOG_MANIFEST_URL))
+            except ValueError:
+                logger.exception("ats_catalog_provider_configuration_invalid")
+        if not AUTOMATIC_DISCOVERY_ENABLED or not DISCOVERY_CATALOG_URL:
+            return providers
+        try:
+            providers.append(PublicJsonCatalogProvider(
+                catalog_url=DISCOVERY_CATALOG_URL,
+                name=DISCOVERY_CATALOG_PROVIDER,
+                allowed_catalog_hosts=DISCOVERY_CATALOG_ALLOWED_HOSTS,
+            ))
+        except ValueError:
+            logger.exception("discovery_provider_configuration_invalid")
+        return providers
 
     def _run_source(self, configuration: SourceConfiguration) -> dict[str, Any]:
         key = (configuration.source.lower(), configuration.identifier)

@@ -100,3 +100,26 @@
 - Manual callers can invoke `SourceDiscoveryService.discover(...)`; no new public endpoint or authorization surface was added in this slice
 - Requests are limited to 25 candidates per discovery run and use the connectors' existing bounded public endpoint timeouts
 - LinkedIn scraping, browser automation, authentication bypass, CAPTCHA/rate-limit/robots circumvention, and credentialed sources remain excluded
+
+## Sprint 8.2 - Compliant Automatic Discovery Providers
+
+- Add a provider abstraction for bounded public ATS board enumeration
+- Add a disabled-by-default `PublicJsonCatalogProvider` that reads an explicitly configured HTTPS JSON catalog from an allowlisted host
+- Catalog entries are accepted only for Greenhouse, Lever, or Ashby and only when their jobs endpoint uses the corresponding official ATS domain/path
+- Every provider candidate still passes the existing connector-backed public endpoint validation before persistence and SourceRegistry promotion
+- Persist provider provenance, discovery keys, provider metadata, duplicate counts, provider results, failed providers, and discovery duration
+- Merge the same ATS source/identifier across providers into one discovered source record
+- Scheduled discovery runs before normal ingestion when automatic discovery is explicitly enabled and configured; provider failure does not stop configured-source ingestion
+- No reliable official board-directory enumeration endpoint was found for Greenhouse, Lever, or Ashby, so no ATS crawler or search-engine scraping was introduced
+- Explicit `DISCOVERY_CANDIDATES` remains supported and is the recommended path until a trusted public catalog is configured
+- LinkedIn scraping, browser automation, arbitrary crawling, authentication bypass, CAPTCHA/robots/rate-limit circumvention, and uncontrolled network discovery remain excluded
+
+## Sprint 8.2 Provider Extension - Verified ATS Company Catalog
+
+- Add `AtsCompanyCatalogProvider` for the third-party `kalil0321/ats-scrapers` company directory
+- The provider fetches only `https://storage.stapply.ai/jobhive/v1/manifest.json` and its Greenhouse, Lever, and Ashby CSV directory URLs
+- Allowed catalog hosts are `storage.stapply.ai`, `raw.githubusercontent.com`, and `github.com`; candidate source URLs must use the official ATS hosts
+- Configure with `ATS_CATALOG_DISCOVERY_ENABLED=false` and `ATS_CATALOG_MANIFEST_URL=https://storage.stapply.ai/jobhive/v1/manifest.json`
+- The catalog is discovery-only seed data, not official ATS data; every row still passes existing official connector validation before eligibility, registry promotion, or ingestion
+- The repository is MIT licensed, but the third-party dataset's separate licensing/provenance should be treated cautiously and is not copied into this repository
+- Provider defaults cap each ATS directory at 25 rows per run, reject malformed/unsupported/duplicate rows, enforce response size and timeout limits, and preserve provider provenance
