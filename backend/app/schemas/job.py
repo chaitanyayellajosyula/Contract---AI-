@@ -18,6 +18,10 @@ class JobCreate(BaseModel):
     source: str | None = None
     source_job_id: str | None = None
     source_url: str | None = None
+    apply_url: str | None = None
+    source_company: str | None = None
+    source_updated_at: datetime | None = None
+    source_metadata: dict | None = None
     posted_at: datetime | None = None
     expires_at: datetime | None = None
     viewed: bool = False
@@ -40,6 +44,10 @@ class JobUpdate(BaseModel):
     source: str | None = None
     source_job_id: str | None = None
     source_url: str | None = None
+    apply_url: str | None = None
+    source_company: str | None = None
+    source_updated_at: datetime | None = None
+    source_metadata: dict | None = None
     posted_at: datetime | None = None
     expires_at: datetime | None = None
     viewed: bool | None = None
@@ -65,6 +73,10 @@ class JobResponse(BaseModel):
     source: str | None = None
     source_job_id: str | None = None
     source_url: str | None = None
+    apply_url: str | None = None
+    source_company: str | None = None
+    source_updated_at: datetime | None = None
+    source_metadata: dict | None = None
     posted_at: datetime | None = None
     expires_at: datetime | None = None
     viewed: bool

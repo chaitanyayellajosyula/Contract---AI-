@@ -33,7 +33,10 @@ class IngestionService:
         self.db.refresh(run)
 
         try:
-            connector = configuration.connector_factory(configuration.identifier)
+            connector = configuration.connector_factory(
+                configuration.identifier,
+                **configuration.settings,
+            )
             raw_jobs = connector.fetch()
             normalized_jobs = []
             for raw_job in raw_jobs:

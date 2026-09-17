@@ -87,10 +87,11 @@ def test_lever_connector_fetches_and_normalizes_public_payload():
     assert normalized["source"] == "lever"
     assert normalized["source_job_id"] == "lever-job-123"
     assert normalized["source_url"] == "https://jobs.lever.co/acme/lever-job-123"
+    assert normalized["apply_url"] == "https://jobs.lever.co/acme/lever-job-123/apply"
     assert normalized["title"] == "Senior Platform Engineer"
     assert normalized["location"] == "Remote - United States"
     assert normalized["description"] == "Build reliable platform services."
-    assert normalized["employment_type"] == "Full-time"
+    assert normalized["employment_type"] == "full_time"
     assert normalized["remote_type"] == "remote"
     assert normalized["posted_at"] is not None
 

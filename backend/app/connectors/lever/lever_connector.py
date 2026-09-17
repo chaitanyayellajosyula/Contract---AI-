@@ -4,6 +4,7 @@ from typing import Any
 from urllib import request
 
 from app.connectors.base.base_connector import BaseConnector
+from app.services.job_classification import classify_engagement
 
 
 class LeverConnector(BaseConnector):
@@ -70,12 +71,16 @@ class LeverConnector(BaseConnector):
             "title": title,
             "description": raw_job.get("descriptionPlain") or raw_job.get("description") or None,
             "location": location_text,
-            "employment_type": str(commitment).strip() if commitment else None,
+            "employment_type": classify_engagement(commitment),
             "remote_type": remote_type,
             "status": "active",
             "source": "lever",
             "source_job_id": source_job_id,
             "source_url": source_url,
+            "apply_url": str(raw_job.get("applyUrl") or "").strip() or None,
+            "source_updated_at": None,
+            "source_company": None,
+            "source_metadata": None,
             "posted_at": LeverConnector._normalize_timestamp(raw_job.get("createdAt")),
             "expires_at": None,
             "viewed": False,

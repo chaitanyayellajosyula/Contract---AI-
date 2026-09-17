@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -24,6 +24,10 @@ class Job(Base):
     source: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     source_job_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    apply_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    source_company: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    source_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     viewed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

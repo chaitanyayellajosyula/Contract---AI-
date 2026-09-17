@@ -4,6 +4,7 @@ from typing import Any
 from urllib import request
 
 from app.connectors.base.base_connector import BaseConnector
+from app.services.job_classification import classify_engagement
 
 
 class GreenhouseConnector(BaseConnector):
@@ -64,9 +65,9 @@ class GreenhouseConnector(BaseConnector):
 
         employment_type = None
         if isinstance(raw_job.get("employment_type"), dict):
-            employment_type = raw_job["employment_type"].get("name") or raw_job["employment_type"].get("value")
+            employment_type = classify_engagement(raw_job["employment_type"].get("name") or raw_job["employment_type"].get("value"))
         elif raw_job.get("employment_type"):
-            employment_type = str(raw_job.get("employment_type")).strip()
+            employment_type = classify_engagement(raw_job.get("employment_type"))
 
         remote_type = "remote" if isinstance(location_name, str) and "remote" in location_name.lower() else None
         posted_at = None
@@ -88,6 +89,10 @@ class GreenhouseConnector(BaseConnector):
             "source": "greenhouse",
             "source_job_id": source_job_id,
             "source_url": absolute_url or None,
+            "apply_url": absolute_url or None,
+            "source_updated_at": posted_at,
+            "source_company": None,
+            "source_metadata": None,
             "posted_at": posted_at,
             "expires_at": None,
             "viewed": False,

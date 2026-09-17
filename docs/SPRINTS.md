@@ -64,3 +64,16 @@
 - All sources use the existing IngestionService, source-plus-job-ID idempotency, update behavior, and ingestion audit records
 - LinkedIn scraping, authentication bypass, browser automation, paid APIs, and credential storage are intentionally excluded
 - Cross-source duplicate merging is deferred; the same posting from different sources remains as separate source records
+
+## Sprint 6.12 - Job Source Expansion & Production Source Configuration
+
+- Add Ashby public job-board ingestion alongside Greenhouse and Lever
+- Supported public source types are Greenhouse boards, Lever sites, and Ashby board slugs
+- Configure additional real public boards/sites with `GREENHOUSE_BOARDS`, `LEVER_SITES`, and `ASHBY_BOARDS` as comma-separated environment values; Stripe Greenhouse remains the only built-in default
+- Ashby uses `https://api.ashbyhq.com/posting-api/job-board/{board}` without credentials; Lever and Greenhouse remain unauthenticated public endpoints documented in Sprint 6.11
+- Preserve source URLs, apply URLs, source timestamps, source metadata, stable external IDs, idempotent updates, and ingestion audit records
+- Engagement labels are normalized only from explicit source fields, including contract, contract-to-hire, C2C, W2, full-time, part-time, and internship where supplied; values are never inferred from generic descriptions
+- The existing scheduler discovers all enabled registry configurations, invokes the existing IngestionService, and retains per-source isolation and overlap locking
+- Public endpoint response shapes and usage limits remain source-specific; configurations should use valid public boards and responsible request rates
+- LinkedIn scraping, browser automation, authentication bypass, paid APIs, credential storage, and fake/demo job data are not implemented
+- Cross-source duplicate merging remains intentionally deferred
