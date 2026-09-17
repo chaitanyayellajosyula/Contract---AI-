@@ -23,6 +23,10 @@ class JobRepository:
         """Return a job by identifier, if present."""
         return self.db.get(Job, job_id)
 
+    def get_by_source_and_source_job_id(self, source: str, source_job_id: str) -> Job | None:
+        """Return an existing job by the source-specific external identity."""
+        return self.db.query(Job).filter(Job.source == source, Job.source_job_id == source_job_id).first()
+
     def get_all(self) -> list[Job]:
         """Return all persisted jobs."""
         return self.db.query(Job).order_by(Job.created_at.desc()).all()

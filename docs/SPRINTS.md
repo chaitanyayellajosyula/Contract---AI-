@@ -26,3 +26,11 @@
 - Enforce controlled submission status transitions
 - Record authorized submission status history
 - Integrate authenticated submission review in the frontend
+
+## Sprint 6.8 - Job Ingestion & Discovery
+
+- Add public job-source ingestion with normalized Greenhouse job data
+- Preserve source identity and skip duplicate jobs during repeated ingestion
+- Add source metadata, posted dates, source links, and ingestion outcome reporting
+- Support job discovery filters, viewed/bookmarked filters, deterministic pagination, and posted-date ordering
+- Display ingested job source and posted-date information in the jobs workspace

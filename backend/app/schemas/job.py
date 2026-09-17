@@ -17,6 +17,7 @@ class JobCreate(BaseModel):
     status: str | None = None
     source: str | None = None
     source_job_id: str | None = None
+    source_url: str | None = None
     posted_at: datetime | None = None
     expires_at: datetime | None = None
     viewed: bool = False
@@ -38,6 +39,7 @@ class JobUpdate(BaseModel):
     status: str | None = None
     source: str | None = None
     source_job_id: str | None = None
+    source_url: str | None = None
     posted_at: datetime | None = None
     expires_at: datetime | None = None
     viewed: bool | None = None
@@ -62,11 +64,23 @@ class JobResponse(BaseModel):
     status: str | None = None
     source: str | None = None
     source_job_id: str | None = None
+    source_url: str | None = None
     posted_at: datetime | None = None
     expires_at: datetime | None = None
     viewed: bool
     bookmarked: bool
     company_id: int | None = None
+    company: str | None = None
     created_at: datetime
     updated_at: datetime
     recruiter_id: int | None = None
+
+
+class JobIngestionSummary(BaseModel):
+    """Response contract for single-source job ingestion."""
+
+    source: str
+    fetched: int
+    created: int
+    skipped_duplicates: int
+    rejected: int
