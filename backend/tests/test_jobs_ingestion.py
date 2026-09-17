@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.main import app
 from app.models.job import Job
+from app.models.ingestion_run import IngestionRun
 from app.models.user import User
 from app.services.auth_service import AuthService
 
@@ -34,6 +35,15 @@ def _clean_jobs() -> None:
     db = SessionLocal()
     try:
         db.query(Job).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def _clean_ingestion_runs() -> None:
+    db = SessionLocal()
+    try:
+        db.query(IngestionRun).delete()
         db.commit()
     finally:
         db.close()
@@ -122,3 +132,67 @@ def test_ingest_endpoint_rejects_invalid_jobs():
     finally:
         GreenhouseConnector.fetch_jobs = original_fetch
         _clean_jobs()
+
+
+def test_source_registry_supports_multiple_boards_and_disabled_configuration():
+    from app.connectors.source_registry import source_registry
+
+    source_registry.register_greenhouse_board("acme")
+    source_registry.register_greenhouse_board("disabled", enabled=False)
+
+    assert source_registry.resolve("greenhouse", "acme") is not None
+    assert source_registry.resolve("greenhouse", "disabled") is None
+    assert source_registry.resolve("unknown", "acme") is None
+
+
+def test_ingestion_updates_changed_job_and_persists_run_summary():
+    _clean_jobs()
+    _clean_ingestion_runs()
+
+    from app.connectors.greenhouse.greenhouse_connector import GreenhouseConnector
+    from app.connectors.source_registry import source_registry
+
+    source_registry.register_greenhouse_board("acme")
+    payload = {
+        "id": 8123001,
+        "title": "Backend Engineer",
+        "content": "Original description",
+        "location": {"name": "Remote"},
+        "absolute_url": "https://acme.example/jobs/8123001",
+    }
+    original_fetch = GreenhouseConnector.fetch_jobs
+    GreenhouseConnector.fetch_jobs = classmethod(lambda cls, board: [payload])  # type: ignore[assignment]
+    try:
+        first = client.post("/jobs/ingest/greenhouse?board=acme", headers=_auth_headers())
+        assert first.status_code == 200, first.text
+        assert first.json()["created"] == 1
+
+        GreenhouseConnector.fetch_jobs = classmethod(  # type: ignore[assignment]
+            lambda cls, board: [{**payload, "content": "Updated description"}]
+        )
+        second = client.post("/jobs/ingest/greenhouse?board=acme", headers=_auth_headers())
+        assert second.status_code == 200, second.text
+        second_payload = second.json()
+        assert second_payload["updated"] == 1
+        assert second_payload["skipped_duplicates"] == 0
+        assert second_payload["status"] == "completed"
+        assert second_payload["source_identifier"] == "acme"
+
+        db = SessionLocal()
+        try:
+            job = db.query(Job).filter(Job.source_job_id == "8123001").one()
+            run = db.query(IngestionRun).filter(IngestionRun.id == second_payload["run_id"]).one()
+            assert job.description == "Updated description"
+            assert run.updated == 1
+            assert run.status == "completed"
+        finally:
+            db.close()
+    finally:
+        GreenhouseConnector.fetch_jobs = original_fetch
+        _clean_jobs()
+        _clean_ingestion_runs()
+
+
+def test_ingest_endpoint_rejects_unregistered_board():
+    response = client.post("/jobs/ingest/greenhouse?board=not-registered", headers=_auth_headers())
+    assert response.status_code == 400

@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app.connectors.greenhouse.greenhouse_connector import GreenhouseConnector
 from app.core.auth import get_current_user
 from app.core.dependencies import get_db
 from app.models.job import Job
 from app.models.user import User
 from app.schemas.job import JobCreate, JobIngestionSummary, JobResponse, JobUpdate
 from app.services.job_service import JobService
+from app.services.ingestion_service import IngestionService
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -34,16 +34,9 @@ def ingest_jobs(
 ) -> JobIngestionSummary:
     """Fetch one public source and ingest normalized jobs without duplicates."""
     del current_user
-    service = JobService(db)
-
-    if source.lower() != "greenhouse":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported job source")
 
     try:
-        connector = GreenhouseConnector(board=board)
-        raw_jobs = connector.fetch_jobs(board)
-        normalized_jobs = [GreenhouseConnector.normalize_job(job_payload) for job_payload in raw_jobs]
-        summary = service.ingest_jobs(source=source.lower(), normalized_jobs=normalized_jobs)
+        summary = IngestionService(db).ingest(source=source, identifier=board)
         return JobIngestionSummary(**summary)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

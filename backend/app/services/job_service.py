@@ -101,8 +101,9 @@ class JobService:
         return self.repository.update(job_id, payload.model_dump(exclude_unset=True))
 
     def ingest_jobs(self, source: str, normalized_jobs: list[dict[str, Any]]) -> dict[str, int | str]:
-        """Persist a batch of normalized jobs, skipping duplicates by source + source_job_id."""
+        """Persist a batch, updating changed jobs by source + source_job_id."""
         created = 0
+        updated = 0
         skipped_duplicates = 0
         rejected = 0
 
@@ -121,7 +122,17 @@ class JobService:
 
             existing = self.repository.get_by_source_and_source_job_id(source, source_job_id)
             if existing is not None:
-                skipped_duplicates += 1
+                updates = {
+                    field: value
+                    for field, value in item.items()
+                    if field not in {"source", "source_job_id", "viewed", "bookmarked"}
+                    and getattr(existing, field, None) != value
+                }
+                if updates:
+                    self.repository.update(existing.id, updates)
+                    updated += 1
+                else:
+                    skipped_duplicates += 1
                 continue
 
             job = Job(**item)
@@ -132,6 +143,7 @@ class JobService:
             "source": source,
             "fetched": len(normalized_jobs),
             "created": created,
+            "updated": updated,
             "skipped_duplicates": skipped_duplicates,
             "rejected": rejected,
         }

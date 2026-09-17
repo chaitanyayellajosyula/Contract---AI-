@@ -80,7 +80,14 @@ class JobIngestionSummary(BaseModel):
     """Response contract for single-source job ingestion."""
 
     source: str
+    source_identifier: str
+    run_id: int
+    started_at: datetime
+    completed_at: datetime
+    status: str
     fetched: int
     created: int
+    updated: int
     skipped_duplicates: int
     rejected: int
+    message: str | None = None

@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from urllib import request
 
@@ -11,7 +11,9 @@ class GreenhouseConnector(BaseConnector):
 
     API_BASE = "https://boards-api.greenhouse.io/v1/boards"
 
-    def __init__(self, board: str = "stripe"):
+    def __init__(self, board: str):
+        if not board or not board.strip():
+            raise ValueError("Greenhouse board is required")
         self.board = board
 
     def connect(self) -> None:
@@ -22,6 +24,8 @@ class GreenhouseConnector(BaseConnector):
 
     @classmethod
     def fetch_jobs(cls, board: str) -> list[dict[str, Any]]:
+        if not board or not board.strip():
+            raise ValueError("Greenhouse board is required")
         url = f"{cls.API_BASE}/{board}/jobs?content=true"
         with request.urlopen(url, timeout=30) as response:
             payload = json.loads(response.read().decode("utf-8"))
@@ -69,6 +73,8 @@ class GreenhouseConnector(BaseConnector):
         if isinstance(first_published, str):
             try:
                 posted_at = datetime.fromisoformat(first_published.replace("Z", "+00:00"))
+                if posted_at.tzinfo is not None:
+                    posted_at = posted_at.astimezone(timezone.utc).replace(tzinfo=None)
             except ValueError:
                 posted_at = None
 

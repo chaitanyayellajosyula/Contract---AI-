@@ -34,3 +34,10 @@
 - Add source metadata, posted dates, source links, and ingestion outcome reporting
 - Support job discovery filters, viewed/bookmarked filters, deterministic pagination, and posted-date ordering
 - Display ingested job source and posted-date information in the jobs workspace
+
+## Sprint 6.9 - Multi-Source Ingestion Foundation
+
+- Add an approved source registry with configurable Greenhouse board identifiers and enabled state
+- Support idempotent multi-board ingestion with updates for changed source jobs
+- Persist ingestion run status, counts, timestamps, and error messages for future scheduler integration
+- Keep scheduled execution out of scope while exposing a reusable ingestion service boundary
