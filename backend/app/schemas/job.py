@@ -81,6 +81,8 @@ class JobResponse(BaseModel):
     expires_at: datetime | None = None
     viewed: bool
     bookmarked: bool
+    saved: bool = False
+    hidden: bool = False
     company_id: int | None = None
     company: str | None = None
     created_at: datetime
@@ -103,3 +105,11 @@ class JobIngestionSummary(BaseModel):
     skipped_duplicates: int
     rejected: int
     message: str | None = None
+
+
+class JobUserStatusUpdate(BaseModel):
+    """User-owned workflow state for one job."""
+
+    viewed: bool | None = None
+    saved: bool | None = None
+    hidden: bool | None = None

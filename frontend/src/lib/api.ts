@@ -19,6 +19,46 @@ export type Submission = {
   company: { id: number; name: string }
 }
 
+export type Job = {
+  id: number
+  title: string
+  description: string | null
+  location: string | null
+  employment_type: string | null
+  remote_type: string | null
+  status: string | null
+  source: string | null
+  source_job_id: string | null
+  source_url: string | null
+  apply_url: string | null
+  source_company: string | null
+  source_updated_at: string | null
+  source_metadata: Record<string, unknown> | null
+  posted_at: string | null
+  created_at: string
+  updated_at: string
+  viewed: boolean
+  saved: boolean
+  hidden: boolean
+  bookmarked: boolean
+  company: string | null
+}
+
+export type JobFilters = {
+  title?: string
+  engagement?: string
+  remote_type?: string
+  location?: string
+  source?: string
+  company?: string
+  freshness?: string
+  viewed?: boolean
+  saved?: boolean
+  hidden?: boolean
+  page?: number
+  page_size?: number
+}
+
 export function getAccessToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -70,8 +110,21 @@ export async function fetchVendorContacts() {
   return request<any[]>('/vendor-contacts')
 }
 
-export async function fetchJobs() {
-  return request<any[]>('/jobs')
+export async function fetchJobs(filters: JobFilters = {}) {
+  const params = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  })
+  const query = params.toString()
+  return request<Job[]>(`/jobs${query ? `?${query}` : ''}`)
+}
+
+export async function updateJobStatus(id: number, updates: { viewed?: boolean; saved?: boolean; hidden?: boolean }) {
+  return request<Job>(`/jobs/${id}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  })
 }
 
 export async function fetchSubmissions(filters: { status?: SubmissionStatus; jobId?: number; candidateId?: number } = {}) {

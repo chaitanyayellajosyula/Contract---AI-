@@ -33,6 +33,7 @@ class User(Base):
 
     company: Mapped["Company | None"] = relationship(back_populates="users")
     candidates: Mapped[list["Candidate"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    job_statuses: Mapped[list["JobUserStatus"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
     @validates("company_id")
     def validate_company_id(self, key: str, value: int | None) -> int | None:

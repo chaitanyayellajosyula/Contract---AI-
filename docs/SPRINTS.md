@@ -77,3 +77,13 @@
 - Public endpoint response shapes and usage limits remain source-specific; configurations should use valid public boards and responsible request rates
 - LinkedIn scraping, browser automation, authentication bypass, paid APIs, credential storage, and fake/demo job data are not implemented
 - Cross-source duplicate merging remains intentionally deferred
+
+## Sprint 7.0 - Job Hunter Dashboard & Opportunity Workflow
+
+- Add a recruiter-focused Job Hunter workspace with newest-first opportunities, compact rows, freshness indicators, and a detail panel
+- Support server-side keyword, engagement, work arrangement, location, company, source, freshness, and paginated listing filters
+- Add authenticated per-user viewed, saved, and hidden workflow state without making status global across users
+- Preserve source and external job identifiers as the primary duplicate identity; fuzzy cross-source merging remains out of scope
+- Keep source/application links external and explicit, with source metadata and descriptions available in the detail view
+- Existing ingestion, audit, source registry, scheduler, authorization, and submission workflows remain unchanged
+- Limitations: list pagination uses response metadata headers, and frontend status actions require an authenticated session

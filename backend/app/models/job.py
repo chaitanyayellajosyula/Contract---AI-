@@ -40,3 +40,4 @@ class Job(Base):
     company: Mapped["Company | None"] = relationship(back_populates="jobs")
     recruiter: Mapped["Recruiter"] = relationship(back_populates="jobs")
     submissions: Mapped[list["Submission"]] = relationship(back_populates="job", cascade="all, delete-orphan")
+    user_statuses: Mapped[list["JobUserStatus"]] = relationship(back_populates="job", cascade="all, delete-orphan")
