@@ -43,6 +43,10 @@ class SourceRegistry:
             return None
         return configuration
 
+    def enabled_configurations(self) -> list[SourceConfiguration]:
+        """Return approved configurations that are enabled for execution."""
+        return [configuration for configuration in self._configurations.values() if configuration.enabled]
+
 
 source_registry = SourceRegistry()
 source_registry.register_greenhouse_board("stripe")
