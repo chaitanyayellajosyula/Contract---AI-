@@ -1,7 +1,6 @@
 import logging
-import re
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from threading import Lock
 from typing import Any, Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -11,6 +10,7 @@ from app.core.config import (
     AUTOMATIC_DISCOVERY_ENABLED,
     AUTOMATIC_INGESTION_ENABLED,
     AUTOMATIC_INGESTION_FAILURE_THRESHOLD,
+    AUTOMATIC_INGESTION_HEALTH_COOLDOWN_SECONDS,
     AUTOMATIC_INGESTION_MAX_JOBS_PER_SOURCE,
     AUTOMATIC_INGESTION_MAX_SOURCES_PER_RUN,
     AUTOMATIC_INGESTION_TIMEOUT_SECONDS,
@@ -31,16 +31,9 @@ from app.services.source_discovery_service import DiscoveryCandidate, SourceDisc
 from app.services.discovery_providers import AtsCompanyCatalogProvider, DiscoveryProvider, PublicJsonCatalogProvider
 from app.models.discovered_source import DiscoveredSource
 from app.models.discovery_run import DiscoveryRun
+from app.utils.error_sanitization import sanitize_error_message
 
 logger = logging.getLogger(__name__)
-_MAX_AUTOMATIC_INGESTION_ERROR_LENGTH = 500
-_SENSITIVE_ERROR_VALUE = re.compile(
-    r"(?i)\b(authorization|access[_-]?token|refresh[_-]?token|token|api[_-]?key|secret|password|credential|cookie)\b"
-    r"\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)"
-)
-_BEARER_VALUE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
-_URL_VALUE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
-_STRUCTURED_RESPONSE = re.compile(r"(?is)(?:^|:\s*)(?:\{|<html\b|<!doctype\s+html)")
 
 
 @dataclass(frozen=True)
@@ -84,6 +77,8 @@ class SchedulerService:
         max_automatic_jobs: int = AUTOMATIC_INGESTION_MAX_JOBS_PER_SOURCE,
         automatic_timeout_seconds: int = AUTOMATIC_INGESTION_TIMEOUT_SECONDS,
         automatic_failure_threshold: int = AUTOMATIC_INGESTION_FAILURE_THRESHOLD,
+        automatic_health_cooldown_seconds: int = AUTOMATIC_INGESTION_HEALTH_COOLDOWN_SECONDS,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.settings = settings or SchedulerSettings()
         self.registry = registry
@@ -97,6 +92,8 @@ class SchedulerService:
         self.max_automatic_jobs = max(0, max_automatic_jobs)
         self.automatic_timeout_seconds = max(1, automatic_timeout_seconds)
         self.automatic_failure_threshold = max(1, automatic_failure_threshold)
+        self.automatic_health_cooldown_seconds = max(0, automatic_health_cooldown_seconds)
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
         self._source_locks: dict[tuple[str, str], Lock] = {}
         self._locks_guard = Lock()
         self._last_due_date: date | None = None
@@ -151,9 +148,33 @@ class SchedulerService:
         for configuration in configured_sources:
             result = self._run_source(configuration)
             results.append(result)
-        automatic_sources = self._select_automatic_sources(configured_sources)
-        automatic_results = [self._run_source(configuration, automatic=True) for configuration in automatic_sources]
-        self._record_automatic_counts(discovery_result, automatic_results)
+        automatic_sources, recovery_keys, health_events, failures_before = self._select_automatic_sources(
+            configured_sources
+        )
+        automatic_results = []
+        for configuration in automatic_sources:
+            result = self._run_source(configuration, automatic=True)
+            automatic_results.append(result)
+            key = (configuration.source.lower(), configuration.identifier)
+            status = result.get("status")
+            if status == "skipped_overlap":
+                event = "recovery_skipped_overlap" if key in recovery_keys else None
+            elif status == "completed":
+                event = "recovered" if key in recovery_keys else "ingestion_succeeded"
+            elif key in recovery_keys:
+                event = "recovery_failed_cooldown_restarted"
+            elif status == "failed" and failures_before.get(key, 0) + 1 >= self.automatic_failure_threshold:
+                event = "failed_entered_cooldown"
+            elif status == "failed":
+                event = "ingestion_failed"
+            else:
+                event = None
+            if event is not None:
+                health_events.append(self._source_health_event(configuration, event, self._now_utc()))
+
+        self._record_automatic_counts(discovery_result, automatic_results, health_events)
+        for event in health_events:
+            logger.info("scheduler_automatic_source_health", extra=event)
         logger.info("scheduler_cycle_completed", extra={"source_count": len(results)})
         response = {"status": "completed", "results": results}
         if discovery_result is not None:
@@ -163,13 +184,18 @@ class SchedulerService:
             "succeeded": sum(result.get("status") == "completed" for result in automatic_results),
             "failed": sum(result.get("status") == "failed" for result in automatic_results),
             "results": automatic_results,
+            "health_events": health_events,
         }
         return response
 
-    def _select_automatic_sources(self, configured_sources: list[SourceConfiguration]) -> list[SourceConfiguration]:
+    def _select_automatic_sources(
+        self,
+        configured_sources: list[SourceConfiguration],
+    ) -> tuple[list[SourceConfiguration], set[tuple[str, str]], list[dict[str, Any]], dict[tuple[str, str], int]]:
         if not self.automatic_ingestion_enabled or self.max_automatic_sources == 0:
-            return []
+            return [], set(), [], {}
         configured_keys = {(item.source.lower(), item.identifier) for item in configured_sources}
+        now = self._now_utc()
         session = self.session_factory()
         try:
             records = session.query(DiscoveredSource).filter(
@@ -177,28 +203,104 @@ class SchedulerService:
                 DiscoveredSource.validation_status == "valid",
                 DiscoveredSource.status == "validated",
                 DiscoveredSource.source.in_(("ashby", "greenhouse", "lever")),
-                DiscoveredSource.consecutive_automatic_ingestion_failures < self.automatic_failure_threshold,
             ).order_by(
                 DiscoveredSource.last_validated_at.desc(),
                 DiscoveredSource.source.asc(),
                 DiscoveredSource.identifier.asc(),
             ).all()
             selected: list[SourceConfiguration] = []
+            recovery_keys: set[tuple[str, str]] = set()
+            health_events: list[dict[str, Any]] = []
+            failures_before: dict[tuple[str, str], int] = {}
             seen: set[tuple[str, str]] = set()
+            cooldown_changed = False
             for record in records:
                 key = (record.source.lower(), record.identifier)
                 if key in configured_keys or key in seen:
                     continue
+                failure_count = record.consecutive_automatic_ingestion_failures
+                recovery = failure_count >= self.automatic_failure_threshold
+                cooldown_started_at = self._as_utc(record.automatic_ingestion_cooldown_started_at)
+                if recovery:
+                    if cooldown_started_at is None:
+                        cooldown_started_at = now
+                        record.automatic_ingestion_cooldown_started_at = now
+                        cooldown_changed = True
+                    cooldown_until = cooldown_started_at + timedelta(
+                        seconds=self.automatic_health_cooldown_seconds
+                    )
+                    if now < cooldown_until:
+                        health_events.append(self._source_health_event(
+                            record,
+                            "skipped_cooldown_active",
+                            now,
+                            cooldown_until=cooldown_until,
+                        ))
+                        continue
                 configuration = self.registry.resolve(record.source, record.identifier)
                 if configuration is None:
                     continue
+                if len(selected) >= self.max_automatic_sources:
+                    continue
                 seen.add(key)
                 selected.append(configuration)
-                if len(selected) >= self.max_automatic_sources:
-                    break
-            return selected
+                failures_before[key] = failure_count
+                if recovery:
+                    recovery_keys.add(key)
+                    health_events.append(self._source_health_event(
+                        record,
+                        "selected_recovery",
+                        now,
+                        cooldown_until=cooldown_until,
+                    ))
+                else:
+                    health_events.append(self._source_health_event(record, "selected", now))
+            if cooldown_changed:
+                session.commit()
+            return selected, recovery_keys, health_events, failures_before
         finally:
             session.close()
+
+    def _now_utc(self) -> datetime:
+        now = self.clock()
+        if now.tzinfo is None:
+            raise ValueError("Scheduler clock must return a timezone-aware datetime")
+        return now.astimezone(timezone.utc)
+
+    @staticmethod
+    def _as_utc(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @staticmethod
+    def _source_health_event(
+        source: SourceConfiguration | DiscoveredSource,
+        event: str,
+        timestamp: datetime,
+        cooldown_until: datetime | None = None,
+    ) -> dict[str, Any]:
+        result = {
+            "source": source.source,
+            "source_identifier": source.identifier,
+            "event": event,
+            "timestamp": timestamp.isoformat(),
+            "health_state": (
+                "degraded" if event == "ingestion_failed" else
+                "unhealthy" if event in {
+                    "skipped_cooldown_active",
+                    "selected_recovery",
+                    "recovery_skipped_overlap",
+                    "recovery_failed_cooldown_restarted",
+                    "failed_entered_cooldown",
+                } else "healthy"
+            ),
+        }
+        if cooldown_until is not None:
+            result["cooldown_until"] = cooldown_until.isoformat()
+        return result
     def _run_discovery(self) -> dict[str, Any] | None:
         if not self.discovery_candidates and not self.discovery_providers:
             return None
@@ -286,15 +388,20 @@ class SchedulerService:
         except Exception as exc:
             if automatic:
                 self._record_automatic_health(configuration, succeeded=False, error=exc)
-            logger.exception(
+            safe_message = sanitize_error_message(exc)
+            logger.error(
                 "scheduler_source_failed",
-                extra={"source": configuration.source, "source_identifier": configuration.identifier},
+                extra={
+                    "source": configuration.source,
+                    "source_identifier": configuration.identifier,
+                    "error": safe_message,
+                },
             )
             return {
                 "source": configuration.source,
                 "source_identifier": configuration.identifier,
                 "status": "failed",
-                "message": str(exc),
+                "message": safe_message if automatic else str(exc),
             }
         finally:
             if session is not None:
@@ -316,15 +423,19 @@ class SchedulerService:
             ).first()
             if record is None:
                 return
-            now = datetime.utcnow()
-            record.last_automatic_ingestion_attempt_at = now
+            now = self._now_utc()
+            database_now = now.replace(tzinfo=None)
+            record.last_automatic_ingestion_attempt_at = database_now
             if succeeded:
-                record.last_automatic_ingestion_success_at = now
+                record.last_automatic_ingestion_success_at = database_now
                 record.consecutive_automatic_ingestion_failures = 0
                 record.last_automatic_ingestion_error = None
+                record.automatic_ingestion_cooldown_started_at = None
             else:
                 record.consecutive_automatic_ingestion_failures += 1
-                record.last_automatic_ingestion_error = self._sanitize_automatic_error(error)
+                record.last_automatic_ingestion_error = sanitize_error_message(error)
+                if record.consecutive_automatic_ingestion_failures >= self.automatic_failure_threshold:
+                    record.automatic_ingestion_cooldown_started_at = now
             session.commit()
         except Exception:
             if session is not None:
@@ -337,33 +448,31 @@ class SchedulerService:
             if session is not None:
                 session.close()
 
-    @staticmethod
-    def _sanitize_automatic_error(error: Exception | None) -> str:
-        if error is None:
-            return "Automatic ingestion failed"
-        error_type = type(error).__name__[:80]
-        detail = str(error).splitlines()[0] if str(error) else ""
-        if _STRUCTURED_RESPONSE.search(detail):
-            detail = "remote response rejected"
-        else:
-            detail = _BEARER_VALUE.sub("Bearer [REDACTED]", detail)
-            detail = _SENSITIVE_ERROR_VALUE.sub(r"\1=[REDACTED]", detail)
-            detail = _URL_VALUE.sub("[URL]", detail)
-        message = f"{error_type}: {detail}".strip()
-        return message[:_MAX_AUTOMATIC_INGESTION_ERROR_LENGTH]
-
-    def _record_automatic_counts(self, discovery_result: dict[str, Any] | None, results: list[dict[str, Any]]) -> None:
+    def _record_automatic_counts(
+        self,
+        discovery_result: dict[str, Any] | None,
+        results: list[dict[str, Any]],
+        health_events: list[dict[str, Any]],
+    ) -> None:
         run_id = discovery_result.get("run_id") if discovery_result else None
-        if run_id is None:
+        if run_id is None and not results and not health_events:
             return
         session = self.session_factory()
         try:
-            run = session.get(DiscoveryRun, run_id)
+            run = session.get(DiscoveryRun, run_id) if run_id is not None else None
             if run is None:
-                return
+                now = self._now_utc().replace(tzinfo=None)
+                run = DiscoveryRun(
+                    run_type="automatic_ingestion",
+                    started_at=now,
+                    completed_at=now,
+                    status="completed",
+                )
+                session.add(run)
             run.selected_count = len(results)
             run.succeeded_count = sum(result.get("status") == "completed" for result in results)
             run.failed_count = sum(result.get("status") == "failed" for result in results)
+            run.automatic_ingestion_health_results = health_events
             session.commit()
         finally:
             session.close()

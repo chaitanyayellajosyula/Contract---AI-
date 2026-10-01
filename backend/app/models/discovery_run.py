@@ -12,6 +12,7 @@ class DiscoveryRun(Base):
     __tablename__ = "discovery_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    run_type: Mapped[str] = mapped_column(String(40), nullable=False, default="source_discovery")
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -28,3 +29,4 @@ class DiscoveryRun(Base):
     selected_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     succeeded_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    automatic_ingestion_health_results: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)

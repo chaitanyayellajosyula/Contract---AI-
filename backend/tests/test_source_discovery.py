@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from io import BytesIO
 from unittest.mock import patch
 
@@ -83,12 +84,15 @@ def test_discovery_is_idempotent_for_same_source_and_identifier():
             record = service.db.query(DiscoveredSource).filter_by(source="ashby", identifier="repeatable").one()
             record.consecutive_automatic_ingestion_failures = 2
             record.last_automatic_ingestion_error = "temporary failure"
+            cooldown_started = datetime(2026, 10, 1, 12)
+            record.automatic_ingestion_cooldown_started_at = cooldown_started
             service.db.commit()
             service.discover([candidate])
         record = service.db.query(DiscoveredSource).filter_by(source="ashby", identifier="repeatable").one()
         assert service.db.query(DiscoveredSource).filter_by(source="ashby", identifier="repeatable").count() == 1
         assert record.consecutive_automatic_ingestion_failures == 2
         assert record.last_automatic_ingestion_error == "temporary failure"
+        assert record.automatic_ingestion_cooldown_started_at == cooldown_started
     finally:
         service.db.close()
         _clean()

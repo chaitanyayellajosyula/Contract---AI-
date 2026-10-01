@@ -60,7 +60,11 @@ docker compose -f docker/docker-compose.yml up
 
 ### Automatic ingestion
 
-`AUTOMATIC_INGESTION_FAILURE_THRESHOLD` defaults to `3`. It temporarily excludes discovered ATS sources from automatic selection after that many consecutive automatic-ingestion failures. A successful automatic ingestion resets the failure count and makes the source eligible again; the source is not permanently disabled.
+- `AUTOMATIC_INGESTION_ENABLED` defaults to `false` and enables scheduled ingestion for discovered ATS sources.
+- `AUTOMATIC_INGESTION_MAX_SOURCES_PER_RUN` defaults to `10`; `AUTOMATIC_INGESTION_MAX_JOBS_PER_SOURCE` defaults to `100`.
+- `AUTOMATIC_INGESTION_TIMEOUT_SECONDS` defaults to `30`.
+- `AUTOMATIC_INGESTION_FAILURE_THRESHOLD` defaults to `3`. Reaching it starts a temporary cooldown; successful recovery resets failures and clears the cooldown.
+- `AUTOMATIC_INGESTION_HEALTH_COOLDOWN_SECONDS` defaults to `3600` and controls the wait before an unhealthy discovered source can be tried again.
 
 ## Project status
 

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.connectors.source_registry import SourceRegistry, source_registry
 from app.models.ingestion_run import IngestionRun
 from app.services.job_service import JobService
+from app.utils.error_sanitization import sanitize_error_message
 
 
 class IngestionService:
@@ -74,6 +75,6 @@ class IngestionService:
         except Exception as exc:
             run.completed_at = datetime.utcnow()
             run.status = "failed"
-            run.message = str(exc)
+            run.message = sanitize_error_message(exc)
             self.db.commit()
             raise

@@ -1,11 +1,14 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from app.connectors.source_registry import SourceConfiguration, SourceRegistry
 from app.core.database import SessionLocal
 from app.main import app
 from app.models.job import Job
 from app.models.ingestion_run import IngestionRun
 from app.models.user import User
 from app.services.auth_service import AuthService
+from app.services.ingestion_service import IngestionService
 
 client = TestClient(app)
 
@@ -196,3 +199,33 @@ def test_ingestion_updates_changed_job_and_persists_run_summary():
 def test_ingest_endpoint_rejects_unregistered_board():
     response = client.post("/jobs/ingest/greenhouse?board=not-registered", headers=_auth_headers())
     assert response.status_code == 400
+
+
+def test_ingestion_audit_sanitizes_sensitive_failure_text():
+    _clean_ingestion_runs()
+
+    class FailingConnector:
+        def __init__(self, _identifier, **_settings):
+            pass
+
+        def fetch(self):
+            raise RuntimeError("Authorization: Bearer audit-secret")
+
+    registry = SourceRegistry()
+    registry.register(SourceConfiguration(
+        source="test-source",
+        identifier="audit-board",
+        enabled=True,
+        connector_factory=FailingConnector,
+    ))
+    db = SessionLocal()
+    try:
+        with pytest.raises(RuntimeError):
+            IngestionService(db, registry).ingest("test-source", "audit-board")
+        run = db.query(IngestionRun).one()
+        assert run.status == "failed"
+        assert "audit-secret" not in run.message
+        assert "[REDACTED]" in run.message
+    finally:
+        db.close()
+        _clean_ingestion_runs()

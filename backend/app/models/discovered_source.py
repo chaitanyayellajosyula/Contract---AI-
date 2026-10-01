@@ -34,3 +34,6 @@ class DiscoveredSource(Base):
     last_automatic_ingestion_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     consecutive_automatic_ingestion_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_automatic_ingestion_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    automatic_ingestion_cooldown_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
