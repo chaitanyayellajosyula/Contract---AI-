@@ -23,6 +23,7 @@ class IngestionService:
         identifier: str,
         max_jobs: int | None = None,
         timeout_seconds: int | None = None,
+        automatic: bool = False,
     ) -> dict[str, Any]:
         configuration = self.registry.resolve(source, identifier)
         if configuration is None:
@@ -32,6 +33,7 @@ class IngestionService:
         run = IngestionRun(
             source=configuration.source,
             source_identifier=configuration.identifier,
+            is_automatic=automatic,
             started_at=started_at,
             status="running",
         )

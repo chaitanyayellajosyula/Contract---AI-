@@ -188,6 +188,7 @@ def test_ingestion_updates_changed_job_and_persists_run_summary():
             assert job.description == "Updated description"
             assert run.updated == 1
             assert run.status == "completed"
+            assert run.is_automatic is False
         finally:
             db.close()
     finally:
