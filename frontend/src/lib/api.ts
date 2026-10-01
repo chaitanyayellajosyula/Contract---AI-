@@ -17,12 +17,44 @@ export type Submission = {
   candidate: { id: number; first_name: string; last_name: string; email: string }
   job: { id: number; title: string; location: string | null }
   company: { id: number; name: string }
+  vendor_name: string | null
 }
 
 export type Candidate = {
   id: number
   first_name: string
   last_name: string
+}
+
+export type CandidateProfile = Candidate & {
+  owner_user_id: number
+  company_id: number
+  email: string
+  phone: string | null
+  linkedin_url: string | null
+  current_location: string | null
+  preferred_location: string | null
+  visa_status: string | null
+  total_experience: string | null
+  us_experience: string | null
+  current_rate: string | null
+  expected_rate: string | null
+  availability_status: string | null
+  resume_filename: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CandidateHotlistItem = {
+  candidate: CandidateProfile
+  data_availability: Record<string, 'stored' | 'not_recorded' | 'unavailable'>
+}
+
+export type CandidateHotlistPage = {
+  items: CandidateHotlistItem[]
+  total: number
+  page: number
+  page_size: number
 }
 
 export type MatchFactor = {
@@ -139,6 +171,18 @@ export type ActivitySummary = {
   last_observed_job_activity: string | null
   contact_count: number
   latest_contact_activity: string | null
+  submission_count: number
+  latest_submission_activity: string | null
+}
+
+export type VendorSubmissionActivity = {
+  submission_id: number
+  candidate_id: number
+  candidate_name: string
+  job_id: number
+  job_title: string
+  status: string
+  updated_at: string
 }
 
 export type VendorIntelligenceItem = {
@@ -163,6 +207,7 @@ export type VendorIntelligenceProfile = {
   summary: ActivitySummary
   contacts: IntelligenceContact[]
   recent_jobs: IntelligenceJob[]
+  recent_submissions: VendorSubmissionActivity[]
 }
 
 export type CompanyIntelligenceItem = {
@@ -238,9 +283,17 @@ export async function fetchVendorContacts() {
   return request<any[]>('/vendor-contacts')
 }
 
-export async function searchVendorIntelligence(q = '', page = 1, pageSize = 25) {
+export async function searchVendorIntelligence(
+  q = '',
+  page = 1,
+  pageSize = 25,
+  filters: { company?: string; website?: string; location?: string; engagement_type?: string; source?: string; has_jobs?: boolean; active_within_days?: number } = {},
+) {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
   if (q.trim()) params.set('q', q.trim())
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  })
   return request<IntelligencePage<VendorIntelligenceItem>>(`/vendors/intelligence?${params}`)
 }
 
@@ -291,6 +344,23 @@ export async function fetchJobs(filters: JobFilters = {}) {
 
 export async function fetchCandidates() {
   return request<Candidate[]>('/candidates')
+}
+
+export async function fetchCandidateHotlist(filters: {
+  q?: string
+  location?: string
+  experience?: string
+  visa_status?: string
+  availability_status?: string
+  rate?: string
+  page?: number
+  page_size?: number
+} = {}) {
+  const params = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  })
+  return request<CandidateHotlistPage>(`/candidates/hotlist?${params}`)
 }
 
 export async function matchCandidateToJob(candidateId: number, jobId: number) {

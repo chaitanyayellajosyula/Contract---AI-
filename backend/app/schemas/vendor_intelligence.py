@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class IntelligenceContact(BaseModel):
@@ -43,6 +43,18 @@ class ActivitySummary(BaseModel):
     last_observed_job_activity: datetime | None
     contact_count: int
     latest_contact_activity: datetime | None
+    submission_count: int = 0
+    latest_submission_activity: datetime | None = None
+
+
+class VendorSubmissionActivity(BaseModel):
+    submission_id: int
+    candidate_id: int
+    candidate_name: str
+    job_id: int
+    job_title: str
+    status: str
+    updated_at: datetime
 
 
 class VendorIntelligenceItem(BaseModel):
@@ -74,6 +86,7 @@ class VendorIntelligenceProfile(BaseModel):
     summary: ActivitySummary
     contacts: list[IntelligenceContact]
     recent_jobs: list[IntelligenceJob]
+    recent_submissions: list[VendorSubmissionActivity] = Field(default_factory=list)
 
 
 class CompanyIntelligenceItem(BaseModel):

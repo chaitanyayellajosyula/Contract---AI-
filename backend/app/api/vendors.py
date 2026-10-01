@@ -42,12 +42,31 @@ def list_vendors(
 @router.get("/intelligence", response_model=VendorSearchPage)
 def search_vendor_intelligence(
     q: str | None = None,
+    company: str | None = None,
+    website: str | None = None,
+    location: str | None = None,
+    engagement_type: str | None = None,
+    source: str | None = None,
+    has_jobs: bool | None = None,
+    active_within_days: int | None = Query(default=None, ge=1, le=365),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> VendorSearchPage:
-    return VendorIntelligenceService(db).search_vendors(current_user, q, page, page_size)
+    return VendorIntelligenceService(db).search_vendors(
+        current_user,
+        q,
+        page,
+        page_size,
+        company=company,
+        website=website,
+        location=location,
+        engagement_type=engagement_type,
+        source=source,
+        has_jobs=has_jobs,
+        active_within_days=active_within_days,
+    )
 
 
 @router.get("/{vendor_id}/intelligence", response_model=VendorIntelligenceProfile)

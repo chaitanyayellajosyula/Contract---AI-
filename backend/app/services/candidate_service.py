@@ -1,4 +1,5 @@
 from fastapi import HTTPException, status
+from sqlalchemy import false, or_
 from sqlalchemy.orm import Session
 
 from app.models.candidate import Candidate
@@ -72,6 +73,65 @@ class CandidateService:
                 return []
             return self.repository.list_candidates_for_company(current_user.company_id)
         return []
+
+    def search_candidates_for_user(
+        self,
+        current_user: User,
+        *,
+        query: str | None = None,
+        location: str | None = None,
+        experience: str | None = None,
+        visa_status: str | None = None,
+        availability_status: str | None = None,
+        rate: str | None = None,
+        page: int = 1,
+        page_size: int = 25,
+    ) -> tuple[list[Candidate], int]:
+        """Search only the candidates already visible through this user's role."""
+        candidates = self.db.query(Candidate)
+        if self._is_recruiter(current_user):
+            candidates = candidates.filter(Candidate.owner_user_id == current_user.id)
+        elif self._is_company_admin(current_user) and current_user.company_id is not None:
+            candidates = candidates.filter(Candidate.company_id == current_user.company_id)
+        else:
+            candidates = candidates.filter(false())
+
+        search = (query or "").strip()
+        if search:
+            pattern = f"%{search}%"
+            search_terms = [
+                Candidate.first_name.ilike(pattern),
+                Candidate.last_name.ilike(pattern),
+                Candidate.email.ilike(pattern),
+            ]
+            name_parts = search.split()
+            if len(name_parts) > 1:
+                search_terms.append(
+                    (Candidate.first_name.ilike(f"%{name_parts[0]}%"))
+                    & Candidate.last_name.ilike(f"%{' '.join(name_parts[1:])}%")
+                )
+            candidates = candidates.filter(or_(*search_terms))
+        if location and location.strip():
+            pattern = f"%{location.strip()}%"
+            candidates = candidates.filter(
+                or_(Candidate.current_location.ilike(pattern), Candidate.preferred_location.ilike(pattern))
+            )
+        for column, value in (
+            (Candidate.total_experience, experience),
+            (Candidate.visa_status, visa_status),
+            (Candidate.availability_status, availability_status),
+        ):
+            if value and value.strip():
+                candidates = candidates.filter(column.ilike(f"%{value.strip()}%"))
+        if rate and rate.strip():
+            pattern = f"%{rate.strip()}%"
+            candidates = candidates.filter(or_(Candidate.expected_rate.ilike(pattern), Candidate.current_rate.ilike(pattern)))
+
+        total = candidates.count()
+        results = candidates.order_by(Candidate.created_at.desc(), Candidate.id.desc()).offset(
+            (page - 1) * page_size
+        ).limit(page_size).all()
+        return results, total
 
     def update_candidate_for_user(self, candidate_id: int, current_user: User, payload: CandidateUpdate) -> Candidate | None:
         """Update a candidate with role-based authorization and field protection.

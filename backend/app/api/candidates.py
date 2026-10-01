@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.dependencies import get_db
 from app.models.candidate import Candidate
 from app.models.user import User
-from app.schemas.candidate import CandidateCreate, CandidateResponse, CandidateUpdate
+from app.schemas.candidate import CandidateCreate, CandidateHotlistItem, CandidateHotlistPage, CandidateResponse, CandidateUpdate
 from app.services.candidate_service import CandidateService
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
@@ -40,6 +40,61 @@ def list_candidates(
     """
     service = CandidateService(db)
     return service.list_candidates_for_user(current_user)
+
+
+@router.get("/hotlist", response_model=CandidateHotlistPage)
+def search_candidate_hotlist(
+    q: str | None = None,
+    location: str | None = None,
+    experience: str | None = None,
+    visa_status: str | None = None,
+    availability_status: str | None = None,
+    rate: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CandidateHotlistPage:
+    candidates, total = CandidateService(db).search_candidates_for_user(
+        current_user,
+        query=q,
+        location=location,
+        experience=experience,
+        visa_status=visa_status,
+        availability_status=availability_status,
+        rate=rate,
+        page=page,
+        page_size=page_size,
+    )
+    supported_fields = (
+        "current_location",
+        "preferred_location",
+        "visa_status",
+        "total_experience",
+        "us_experience",
+        "current_rate",
+        "expected_rate",
+        "availability_status",
+        "resume_filename",
+    )
+    items = [
+        CandidateHotlistItem(
+            candidate=candidate,
+            data_availability={
+                **{
+                    field: "stored" if getattr(candidate, field) else "not_recorded"
+                    for field in supported_fields
+                },
+                "skills": "unavailable",
+                "title": "unavailable",
+                "education": "unavailable",
+                "certifications": "unavailable",
+                "resume_content": "unavailable",
+            },
+        )
+        for candidate in candidates
+    ]
+    return CandidateHotlistPage(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{candidate_id}", response_model=CandidateResponse)

@@ -26,6 +26,8 @@ function safeWebsite(value: string | null) {
 export default function VendorsPage() {
   const [input, setInput] = useState('')
   const [query, setQuery] = useState('')
+  const [filterInputs, setFilterInputs] = useState({ company: '', website: '', location: '', engagement_type: '', source: '', active_within_days: '' })
+  const [filters, setFilters] = useState(filterInputs)
   const [page, setPage] = useState(1)
   const [vendors, setVendors] = useState<VendorIntelligenceItem[]>([])
   const [total, setTotal] = useState(0)
@@ -41,7 +43,10 @@ export default function VendorsPage() {
   useEffect(() => {
     let active = true
     setLoading(true)
-    searchVendorIntelligence(query, page, 20)
+    searchVendorIntelligence(query, page, 20, {
+      ...filters,
+      active_within_days: filters.active_within_days ? Number(filters.active_within_days) : undefined,
+    })
       .then((result) => {
         if (!active) return
         setVendors(result.items)
@@ -58,7 +63,7 @@ export default function VendorsPage() {
         if (active) setLoading(false)
       })
     return () => { active = false }
-  }, [query, page])
+  }, [query, page, filters])
 
   useEffect(() => {
     if (selectedId === null) {
@@ -94,6 +99,7 @@ export default function VendorsPage() {
     event.preventDefault()
     setPage(1)
     setQuery(input.trim())
+    setFilters({ ...filterInputs })
   }
 
   const companyWebsite = profile ? safeWebsite(profile.vendor.company_website) : null
@@ -105,18 +111,19 @@ export default function VendorsPage() {
           <p className="text-sm font-medium text-cyan-400">Relationships</p>
           <h1 className="mt-1 text-2xl font-semibold text-white">Vendor intelligence</h1>
         </div>
-        <form className="flex w-full max-w-lg gap-2" onSubmit={submitSearch}>
-          <label className="sr-only" htmlFor="vendor-search">Search vendors</label>
-          <input
-            id="vendor-search"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="Vendor, domain, or contact"
-            className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500"
-          />
-          <button className="inline-flex items-center gap-2 rounded-md bg-cyan-700 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-600" type="submit">
-            <Search size={16} aria-hidden="true" /> Search
-          </button>
+        <form className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-3xl lg:grid-cols-3" onSubmit={submitSearch}>
+          <label className="relative sm:col-span-2 lg:col-span-3">
+            <span className="sr-only">Search vendor, contact, or job</span>
+            <Search size={16} className="absolute left-3 top-2.5 text-slate-500" aria-hidden="true" />
+            <input value={input} onChange={(event) => setInput(event.target.value)} placeholder="Vendor, company, contact, or job" className="w-full rounded-md border border-slate-700 bg-slate-900 py-2 pl-9 pr-3 text-sm text-white outline-none focus:border-cyan-500" />
+          </label>
+          <input aria-label="Company" value={filterInputs.company} onChange={(event) => setFilterInputs({ ...filterInputs, company: event.target.value })} placeholder="Company" className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500" />
+          <input aria-label="Website or domain" value={filterInputs.website} onChange={(event) => setFilterInputs({ ...filterInputs, website: event.target.value })} placeholder="Website / domain" className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500" />
+          <input aria-label="Location" value={filterInputs.location} onChange={(event) => setFilterInputs({ ...filterInputs, location: event.target.value })} placeholder="Location" className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500" />
+          <input aria-label="Engagement type" value={filterInputs.engagement_type} onChange={(event) => setFilterInputs({ ...filterInputs, engagement_type: event.target.value })} placeholder="Engagement" className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500" />
+          <input aria-label="Job source" value={filterInputs.source} onChange={(event) => setFilterInputs({ ...filterInputs, source: event.target.value })} placeholder="Job source" className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500" />
+          <select aria-label="Recent activity window" value={filterInputs.active_within_days} onChange={(event) => setFilterInputs({ ...filterInputs, active_within_days: event.target.value })} className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500"><option value="">Any activity</option><option value="30">Active in 30 days</option><option value="90">Active in 90 days</option><option value="365">Active in a year</option></select>
+          <button className="inline-flex items-center justify-center gap-2 rounded-md bg-cyan-700 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-600" type="submit"><Search size={16} aria-hidden="true" /> Search</button>
         </form>
       </header>
 
@@ -173,9 +180,10 @@ export default function VendorsPage() {
                 <p className="mt-2 text-sm text-slate-400">{profile.vendor.email || 'No email'}{profile.vendor.phone ? ` · ${profile.vendor.phone}` : ''}</p>
               </header>
 
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                 <Metric icon={<BriefcaseBusiness size={16} />} label="Jobs" value={profile.summary.total_jobs} />
                 <Metric icon={<Users size={16} />} label="Contacts" value={profile.summary.contact_count} />
+                <Metric label="Submissions" value={profile.summary.submission_count} />
                 <Metric label="Last activity" value={formatDate(profile.vendor.latest_activity)} />
                 <Metric label="Last job" value={formatDate(profile.summary.latest_job_date)} />
               </div>
@@ -214,6 +222,21 @@ export default function VendorsPage() {
                         ))}
                       </ul>
                     )}
+                  </section>
+                  <section>
+                    <h3 className="mb-3 font-medium text-white">Recent submissions</h3>
+                    {profile.recent_submissions.length === 0 ? <p className="text-sm text-slate-400">No submissions available to this account.</p> : (
+                      <ul className="divide-y divide-slate-800 border-y border-slate-800">
+                        {profile.recent_submissions.map((submission) => (
+                          <li key={submission.submission_id} className="py-3">
+                            <p className="font-medium text-slate-200">{submission.candidate_name}</p>
+                            <p className="mt-1 text-sm text-slate-300">{submission.job_title}</p>
+                            <p className="mt-1 text-xs text-slate-500">{submission.status.replace(/_/g, ' ')} · {formatDate(submission.updated_at)}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="mt-2 text-xs text-slate-500">Latest authorized submission activity {formatDate(profile.summary.latest_submission_activity)}</p>
                   </section>
                   <section>
                     <h3 className="mb-2 font-medium text-white">Observed</h3>

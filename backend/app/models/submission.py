@@ -37,6 +37,12 @@ class Submission(Base):
     submitted_by: Mapped["User"] = relationship()
     status_history: Mapped[list["SubmissionStatusHistory"]] = relationship(back_populates="submission", cascade="all, delete-orphan", order_by="SubmissionStatusHistory.created_at")
 
+    @property
+    def vendor_name(self) -> str | None:
+        recruiter = self.job.recruiter if self.job is not None else None
+        vendor = recruiter.vendor if recruiter is not None else None
+        return vendor.name if vendor is not None else None
+
 
 class SubmissionStatusHistory(Base):
     """Immutable record of a submission status transition."""

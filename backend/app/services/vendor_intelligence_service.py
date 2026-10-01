@@ -4,13 +4,15 @@ from typing import Any, Callable
 from urllib.parse import parse_qsl, urlsplit
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, case, func, or_
+from sqlalchemy import and_, case, false, func, or_
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
+from app.models.candidate import Candidate
 from app.models.job import Job
 from app.models.job_user_status import JobUserStatus
 from app.models.recruiter import Recruiter
+from app.models.submission import Submission
 from app.models.user import User, UserRole
 from app.models.vendor import Vendor
 from app.models.vendor_contact import VendorContact
@@ -25,6 +27,7 @@ from app.schemas.vendor_intelligence import (
     VendorIntelligenceItem,
     VendorIntelligenceProfile,
     VendorSearchPage,
+    VendorSubmissionActivity,
 )
 
 RECENT_ACTIVITY_WINDOW = timedelta(days=30)
@@ -46,6 +49,14 @@ class VendorIntelligenceService:
         query: str | None,
         page: int,
         page_size: int,
+        *,
+        company: str | None = None,
+        website: str | None = None,
+        location: str | None = None,
+        engagement_type: str | None = None,
+        source: str | None = None,
+        has_jobs: bool | None = None,
+        active_within_days: int | None = None,
     ) -> VendorSearchPage:
         company_scope = self._company_scope(user)
         vendor_query = self.db.query(Vendor).outerjoin(Company, Vendor.company_id == Company.id)
@@ -57,9 +68,47 @@ class VendorIntelligenceService:
             vendor_query = vendor_query.filter(or_(
                 Vendor.name.ilike(pattern),
                 Vendor.email.ilike(pattern),
+                Company.name.ilike(pattern),
                 Company.website.ilike(pattern),
+                Company.location.ilike(pattern),
+                Company.industry.ilike(pattern),
                 Vendor.contacts.any(or_(VendorContact.full_name.ilike(pattern), VendorContact.email.ilike(pattern))),
+                self._vendor_has_job(or_(
+                    Job.title.ilike(pattern),
+                    Job.source.ilike(pattern),
+                    Job.source_company.ilike(pattern),
+                    Job.employment_type.ilike(pattern),
+                    Job.location.ilike(pattern),
+                )),
             ))
+        if company and company.strip():
+            vendor_query = vendor_query.filter(Company.name.ilike(f"%{company.strip()}%"))
+        if website and website.strip():
+            vendor_query = vendor_query.filter(Company.website.ilike(f"%{website.strip()}%"))
+        job_filters = []
+        company_location_filter = None
+        if location and location.strip():
+            pattern = f"%{location.strip()}%"
+            company_location_filter = Company.location.ilike(pattern)
+            job_filters.append(Job.location.ilike(pattern))
+        if engagement_type and engagement_type.strip():
+            job_filters.append(Job.employment_type.ilike(f"%{engagement_type.strip()}%"))
+        if source and source.strip():
+            job_filters.append(Job.source.ilike(f"%{source.strip()}%"))
+        if job_filters:
+            vendor_query = vendor_query.filter(
+                or_(company_location_filter, self._vendor_has_job(*job_filters))
+                if company_location_filter is not None
+                else self._vendor_has_job(*job_filters)
+            )
+        if has_jobs is not None:
+            has_related_jobs = self._vendor_has_job()
+            vendor_query = vendor_query.filter(has_related_jobs if has_jobs else ~has_related_jobs)
+        if active_within_days is not None:
+            activity_cutoff = self.clock() - timedelta(days=active_within_days)
+            recent_job = self._vendor_has_job(func.coalesce(Job.posted_at, Job.created_at) >= activity_cutoff)
+            recent_contact = Vendor.contacts.any(VendorContact.updated_at >= activity_cutoff)
+            vendor_query = vendor_query.filter(or_(recent_job, recent_contact))
         total = vendor_query.distinct().count()
         vendors = vendor_query.distinct().order_by(Vendor.name.asc(), Vendor.id.asc()).offset(
             (page - 1) * page_size
@@ -77,7 +126,22 @@ class VendorIntelligenceService:
             return None
         contacts = self._vendor_contacts(vendor)
         jobs_query = self._vendor_jobs_query(vendor)
-        summary = self._activity_summary(jobs_query, contacts)
+        submission_query = self._vendor_submissions_query(user, vendor)
+        submission_count = submission_query.count()
+        latest_submission_activity = submission_query.with_entities(func.max(Submission.updated_at)).scalar()
+        recent_submissions = [
+            VendorSubmissionActivity(
+                submission_id=submission.id,
+                candidate_id=submission.candidate_id,
+                candidate_name=f"{submission.candidate.first_name} {submission.candidate.last_name}",
+                job_id=submission.job_id,
+                job_title=submission.job.title,
+                status=submission.status,
+                updated_at=submission.updated_at,
+            )
+            for submission in submission_query.order_by(Submission.updated_at.desc(), Submission.id.desc()).limit(10).all()
+        ]
+        summary = self._activity_summary(jobs_query, contacts, submission_count, latest_submission_activity)
         recent_jobs = jobs_query.order_by(
             func.coalesce(Job.posted_at, Job.created_at).desc(), Job.id.desc()
         ).limit(RECENT_JOB_LIMIT).all()
@@ -86,6 +150,7 @@ class VendorIntelligenceService:
             summary=summary,
             contacts=contacts,
             recent_jobs=self._serialize_jobs(recent_jobs, user),
+            recent_submissions=recent_submissions,
         )
 
     def vendor_jobs(
@@ -163,7 +228,13 @@ class VendorIntelligenceService:
         ).all()
         contacts = [contact for vendor in vendors for contact in self._vendor_contacts(vendor)]
         jobs_query = self._company_jobs_query(company.id)
-        summary = self._activity_summary(jobs_query, contacts)
+        submission_query = self._visible_submissions_query(user, company.id)
+        summary = self._activity_summary(
+            jobs_query,
+            contacts,
+            submission_query.count(),
+            submission_query.with_entities(func.max(Submission.updated_at)).scalar(),
+        )
         jobs = jobs_query.order_by(func.coalesce(Job.posted_at, Job.created_at).desc(), Job.id.desc()).limit(
             RECENT_JOB_LIMIT
         ).all()
@@ -273,13 +344,41 @@ class VendorIntelligenceService:
             latest_activity=latest_activity,
         )
 
-    def _activity_summary(self, jobs_query, contacts: list[IntelligenceContact]) -> ActivitySummary:
+    def _activity_summary(
+        self,
+        jobs_query,
+        contacts: list[IntelligenceContact],
+        submission_count: int = 0,
+        latest_submission_activity: datetime | None = None,
+    ) -> ActivitySummary:
         activity = self._job_activity(jobs_query)
         latest_contact = max((contact.updated_at for contact in contacts), default=None)
         return ActivitySummary(
             **activity,
             contact_count=len(contacts),
             latest_contact_activity=latest_contact,
+            submission_count=submission_count,
+            latest_submission_activity=latest_submission_activity,
+        )
+
+    def _visible_submissions_query(self, user: User, company_id: int | None):
+        if company_id is None:
+            return self.db.query(Submission).filter(false())
+        query = self.db.query(Submission).join(Candidate).filter(Submission.company_id == company_id)
+        if user.role == UserRole.RECRUITER.value:
+            return query.filter(Candidate.owner_user_id == user.id)
+        if user.role == UserRole.COMPANY_ADMIN.value and user.company_id == company_id:
+            return query
+        return query.filter(false())
+
+    def _vendor_submissions_query(self, user: User, vendor: Vendor):
+        if vendor.company_id is None:
+            return self.db.query(Submission).filter(false())
+        return self._visible_submissions_query(user, vendor.company_id).join(
+            Job, Submission.job_id == Job.id
+        ).join(Recruiter, Job.recruiter_id == Recruiter.id).filter(
+            Recruiter.vendor_id == vendor.id,
+            or_(Job.company_id.is_(None), Job.company_id == vendor.company_id),
         )
 
     def _job_activity(self, query) -> dict[str, Any]:
@@ -314,6 +413,11 @@ class VendorIntelligenceService:
             Recruiter.vendor_id == vendor.id,
             or_(Job.company_id.is_(None), Job.company_id == vendor.company_id),
         )
+
+    @staticmethod
+    def _vendor_has_job(*conditions):
+        job_scope = or_(Job.company_id.is_(None), Job.company_id == Vendor.company_id)
+        return Vendor.recruiters.any(Recruiter.jobs.any(and_(job_scope, *conditions)))
 
     def _company_jobs_query(self, company_id: int):
         return self.db.query(Job).outerjoin(Recruiter, Job.recruiter_id == Recruiter.id).outerjoin(

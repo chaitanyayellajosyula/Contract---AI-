@@ -35,6 +35,7 @@ class SubmissionResponse(BaseModel):
     candidate: "CandidateSummary"
     job: "JobSummary"
     company: "CompanySummary"
+    vendor_name: str | None = None
 
 
 class CandidateSummary(BaseModel):

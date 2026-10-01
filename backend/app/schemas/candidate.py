@@ -74,3 +74,15 @@ class CandidateResponse(BaseModel):
     resume_filename: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class CandidateHotlistItem(BaseModel):
+    candidate: CandidateResponse
+    data_availability: dict[str, str]
+
+
+class CandidateHotlistPage(BaseModel):
+    items: list[CandidateHotlistItem]
+    total: int
+    page: int
+    page_size: int
