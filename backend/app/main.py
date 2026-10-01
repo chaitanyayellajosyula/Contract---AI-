@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api import auth_router, candidates_router, companies_router, dashboard_router, jobs_router, recruiters_router, submissions_router, vendor_contacts_router, vendors_router
+from app.api import auth_router, candidates_router, companies_router, dashboard_router, jobs_router, recruiters_router, source_health_router, submissions_router, vendor_contacts_router, vendors_router
 from app.core.bootstrap import bootstrap_admin
 from app.core.database import SessionLocal, initialize_database
 from app.models import user, team
@@ -20,6 +20,7 @@ app.include_router(submissions_router)
 app.include_router(vendor_contacts_router)
 app.include_router(vendors_router)
 app.include_router(recruiters_router)
+app.include_router(source_health_router)
 
 initialize_database()
 
