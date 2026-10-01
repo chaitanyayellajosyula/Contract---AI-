@@ -19,6 +19,39 @@ export type Submission = {
   company: { id: number; name: string }
 }
 
+export type Candidate = {
+  id: number
+  first_name: string
+  last_name: string
+}
+
+export type MatchFactor = {
+  status: 'matched' | 'gap' | 'not_assessed'
+  points: number | null
+  max_points: number
+  explanation: string
+}
+
+export type MatchResult = {
+  candidate_id: number
+  job_id: number
+  overall_score: number | null
+  match_level: 'strong' | 'partial' | 'poor' | 'limited_evidence' | 'insufficient_data'
+  evidence_coverage: number
+  matched_skills: string[]
+  missing_skills: string[]
+  related_skills: string[]
+  skill_match: MatchFactor
+  title_role_match: MatchFactor
+  experience_match: MatchFactor
+  location_match: MatchFactor
+  engagement_authorization_match: MatchFactor
+  keyword_domain_match: MatchFactor
+  explanation: string
+  important_gaps: string[]
+  assessed_at: string
+}
+
 export type Job = {
   id: number
   title: string
@@ -254,6 +287,14 @@ export async function fetchJobs(filters: JobFilters = {}) {
   })
   const query = params.toString()
   return request<Job[]>(`/jobs${query ? `?${query}` : ''}`)
+}
+
+export async function fetchCandidates() {
+  return request<Candidate[]>('/candidates')
+}
+
+export async function matchCandidateToJob(candidateId: number, jobId: number) {
+  return request<MatchResult>(`/matching/candidates/${candidateId}/jobs/${jobId}`, { method: 'POST' })
 }
 
 export async function updateJobStatus(id: number, updates: { viewed?: boolean; saved?: boolean; hidden?: boolean }) {

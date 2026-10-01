@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Bookmark, BriefcaseBusiness, ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff, MapPin, Search, X } from 'lucide-react'
-import { ApiError, fetchJobs, Job, JobFilters, updateJobStatus } from '../lib/api'
+import { ApiError, Candidate, fetchCandidates, fetchJobs, Job, JobFilters, MatchResult, matchCandidateToJob, updateJobStatus } from '../lib/api'
 
 const PAGE_SIZE = 20
 
@@ -18,6 +18,45 @@ function label(value: string | null) {
 }
 
 function JobDetail({ job, onClose, onStatus }: { job: Job; onClose: () => void; onStatus: (updates: { viewed?: boolean; saved?: boolean; hidden?: boolean }) => void }) {
+  const [candidates, setCandidates] = useState<Candidate[] | null>(null)
+  const [candidateId, setCandidateId] = useState('')
+  const [match, setMatch] = useState<MatchResult | null>(null)
+  const [matchError, setMatchError] = useState('')
+  const [loadingCandidates, setLoadingCandidates] = useState(false)
+  const [matching, setMatching] = useState(false)
+
+  async function loadCandidates() {
+    setLoadingCandidates(true)
+    setMatchError('')
+    try {
+      const results = await fetchCandidates()
+      setCandidates(results)
+      setCandidateId(results[0] ? String(results[0].id) : '')
+    } catch (error) {
+      setMatchError(error instanceof ApiError && error.status === 401
+        ? 'Sign in to access your candidates.'
+        : 'Unable to load candidates you are authorized to access.')
+    } finally {
+      setLoadingCandidates(false)
+    }
+  }
+
+  async function requestMatch() {
+    if (!candidateId) return
+    setMatching(true)
+    setMatchError('')
+    try {
+      setMatch(await matchCandidateToJob(Number(candidateId), job.id))
+    } catch (error) {
+      setMatchError(error instanceof ApiError && error.status === 401
+        ? 'Sign in to request a match.'
+        : 'Unable to match this candidate to the job.')
+      setMatch(null)
+    } finally {
+      setMatching(false)
+    }
+  }
+
   return (
     <aside className="flex h-full min-h-[520px] flex-col border-l border-slate-800 bg-slate-950/90 p-6 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -51,6 +90,38 @@ function JobDetail({ job, onClose, onStatus }: { job: Job; onClose: () => void; 
       <section className="mt-7 border-t border-slate-800 pt-6">
         <h3 className="text-sm font-semibold text-white">Description</h3>
         <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-300">{job.description || 'No description provided by the source.'}</div>
+      </section>
+      <section className="mt-7 border-t border-slate-800 pt-6">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-white">Candidate match</h3>
+          {candidates === null && <button disabled={loadingCandidates} onClick={() => void loadCandidates()} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:border-slate-500 disabled:opacity-50">{loadingCandidates ? 'Loading...' : 'Select candidate'}</button>}
+        </div>
+        {candidates !== null && <div className="mt-3 flex gap-2">
+          <select aria-label="Candidate" value={candidateId} onChange={(event) => { setCandidateId(event.target.value); setMatch(null) }} className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200">
+            <option value="">No candidates available</option>
+            {candidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.first_name} {candidate.last_name}</option>)}
+          </select>
+          <button disabled={!candidateId || matching} onClick={() => void requestMatch()} className="rounded-lg bg-cyan-400 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-50">{matching ? 'Matching...' : 'Match'}</button>
+        </div>}
+        {matchError && <p className="mt-3 text-sm text-rose-300">{matchError}</p>}
+        {candidates?.length === 0 && !matchError && <p className="mt-3 text-sm text-slate-400">No candidates are available to match.</p>}
+        {match && <div className="mt-4 border-t border-slate-800 pt-4">
+          <div className="flex items-start justify-between gap-3">
+            <div><p className="text-2xl font-semibold text-white">{match.overall_score === null ? 'N/A' : `${match.overall_score}/100`}</p><p className="mt-1 text-xs text-slate-400">Evidence score, not a probability</p></div>
+            <div className="text-right"><p className="text-sm font-medium capitalize text-cyan-300">{match.match_level.replace(/_/g, ' ')}</p><p className="mt-1 text-xs text-slate-400">{match.evidence_coverage}% criteria assessed</p></div>
+          </div>
+          <p className="mt-3 text-sm leading-5 text-slate-300">{match.explanation}</p>
+          <div className="mt-4">
+            <h4 className="text-xs font-semibold uppercase text-slate-400">Skills</h4>
+            {match.matched_skills.length > 0 || match.missing_skills.length > 0
+              ? <p className="mt-2 text-sm text-slate-300">Matched: {match.matched_skills.join(', ') || 'None'} · Missing: {match.missing_skills.join(', ') || 'None'}</p>
+              : <p className="mt-2 text-sm text-slate-400">Not assessed; candidate skills are not stored.</p>}
+          </div>
+          {match.important_gaps.length > 0 && <div className="mt-4">
+            <h4 className="text-xs font-semibold uppercase text-slate-400">Gaps and unavailable evidence</h4>
+            <ul className="mt-2 space-y-1 text-sm text-slate-300">{match.important_gaps.map((gap) => <li key={gap}>{gap}</li>)}</ul>
+          </div>}
+        </div>}
       </section>
       {job.source_job_id && <p className="mt-6 border-t border-slate-800 pt-4 text-xs text-slate-500">Source job ID: {job.source_job_id}</p>}
     </aside>
@@ -150,7 +221,7 @@ export default function JobsPage() {
           <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><h2 className="font-semibold text-white">Open opportunities</h2><p className="mt-1 text-xs text-slate-500">Page {page} · {jobs.length} loaded</p></div><div className="flex gap-1"><button disabled={page === 1} onClick={() => setPage((value) => value - 1)} aria-label="Previous page" title="Previous page" className="rounded-lg p-2 text-slate-400 enabled:hover:bg-slate-800 enabled:hover:text-white disabled:opacity-30"><ChevronLeft size={18} /></button><button disabled={!canGoNext} onClick={() => setPage((value) => value + 1)} aria-label="Next page" title="Next page" className="rounded-lg p-2 text-slate-400 enabled:hover:bg-slate-800 enabled:hover:text-white disabled:opacity-30"><ChevronRight size={18} /></button></div></div>
           {loading ? <div className="px-5 py-12 text-center text-sm text-slate-500">Loading opportunities...</div> : jobs.length === 0 ? <div className="px-5 py-12 text-center text-sm text-slate-500">No opportunities match these filters.</div> : <div className="divide-y divide-slate-800/80">{jobs.map((job) => <button key={job.id} onClick={() => void openJob(job)} className={`block w-full px-5 py-4 text-left transition hover:bg-slate-800/50 ${selected?.id === job.id ? 'bg-cyan-400/5' : ''}`}><div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"><div className="min-w-0"><div className="flex items-center gap-2"><h3 className="truncate font-semibold text-white">{job.title}</h3>{!job.viewed && <span className="rounded-full bg-cyan-400/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-300">New</span>}</div><p className="mt-1 text-sm text-slate-400">{job.company || job.source_company || 'Company not specified'}</p><div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-400"><span className="inline-flex items-center gap-1"><MapPin size={13} />{job.location || 'Location unknown'}</span><span className="rounded bg-slate-800 px-2 py-1">{label(job.remote_type)}</span><span className="rounded bg-slate-800 px-2 py-1">{label(job.employment_type)}</span><span className="rounded bg-slate-800 px-2 py-1">{job.source || 'Unknown source'}</span></div></div><div className="flex shrink-0 items-center gap-3 text-xs text-slate-500"><span className={job.posted_at && freshness(job.posted_at).includes('Today') ? 'font-semibold text-cyan-300' : ''}>{freshness(job.posted_at)}</span>{job.saved && <Bookmark size={15} className="text-amber-300" fill="currentColor" />}</div></div></button>)}</div>}
         </section>
-        {selected && <JobDetail job={selected} onClose={() => setSelected(null)} onStatus={(updates) => void markStatus(updates)} />}
+        {selected && <JobDetail key={selected.id} job={selected} onClose={() => setSelected(null)} onStatus={(updates) => void markStatus(updates)} />}
       </div>
     </div>
   )

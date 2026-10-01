@@ -3,6 +3,7 @@ from .candidates import router as candidates_router
 from .companies import router as companies_router
 from .dashboard import router as dashboard_router
 from .jobs import router as jobs_router
+from .matching import router as matching_router
 from .submissions import router as submissions_router
 from .recruiters import router as recruiters_router
 from .source_health import router as source_health_router
