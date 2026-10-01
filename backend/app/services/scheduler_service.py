@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from threading import Lock
@@ -9,6 +10,7 @@ from app.connectors.source_registry import SourceConfiguration, SourceRegistry, 
 from app.core.config import (
     AUTOMATIC_DISCOVERY_ENABLED,
     AUTOMATIC_INGESTION_ENABLED,
+    AUTOMATIC_INGESTION_FAILURE_THRESHOLD,
     AUTOMATIC_INGESTION_MAX_JOBS_PER_SOURCE,
     AUTOMATIC_INGESTION_MAX_SOURCES_PER_RUN,
     AUTOMATIC_INGESTION_TIMEOUT_SECONDS,
@@ -31,6 +33,14 @@ from app.models.discovered_source import DiscoveredSource
 from app.models.discovery_run import DiscoveryRun
 
 logger = logging.getLogger(__name__)
+_MAX_AUTOMATIC_INGESTION_ERROR_LENGTH = 500
+_SENSITIVE_ERROR_VALUE = re.compile(
+    r"(?i)\b(authorization|access[_-]?token|refresh[_-]?token|token|api[_-]?key|secret|password|credential|cookie)\b"
+    r"\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)"
+)
+_BEARER_VALUE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
+_URL_VALUE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+_STRUCTURED_RESPONSE = re.compile(r"(?is)(?:^|:\s*)(?:\{|<html\b|<!doctype\s+html)")
 
 
 @dataclass(frozen=True)
@@ -73,6 +83,7 @@ class SchedulerService:
         max_automatic_sources: int = AUTOMATIC_INGESTION_MAX_SOURCES_PER_RUN,
         max_automatic_jobs: int = AUTOMATIC_INGESTION_MAX_JOBS_PER_SOURCE,
         automatic_timeout_seconds: int = AUTOMATIC_INGESTION_TIMEOUT_SECONDS,
+        automatic_failure_threshold: int = AUTOMATIC_INGESTION_FAILURE_THRESHOLD,
     ) -> None:
         self.settings = settings or SchedulerSettings()
         self.registry = registry
@@ -85,6 +96,7 @@ class SchedulerService:
         self.max_automatic_sources = max(0, max_automatic_sources)
         self.max_automatic_jobs = max(0, max_automatic_jobs)
         self.automatic_timeout_seconds = max(1, automatic_timeout_seconds)
+        self.automatic_failure_threshold = max(1, automatic_failure_threshold)
         self._source_locks: dict[tuple[str, str], Lock] = {}
         self._locks_guard = Lock()
         self._last_due_date: date | None = None
@@ -164,7 +176,13 @@ class SchedulerService:
                 DiscoveredSource.eligible.is_(True),
                 DiscoveredSource.validation_status == "valid",
                 DiscoveredSource.status == "validated",
-            ).order_by(DiscoveredSource.last_validated_at.desc()).limit(self.max_automatic_sources * 2).all()
+                DiscoveredSource.source.in_(("ashby", "greenhouse", "lever")),
+                DiscoveredSource.consecutive_automatic_ingestion_failures < self.automatic_failure_threshold,
+            ).order_by(
+                DiscoveredSource.last_validated_at.desc(),
+                DiscoveredSource.source.asc(),
+                DiscoveredSource.identifier.asc(),
+            ).all()
             selected: list[SourceConfiguration] = []
             seen: set[tuple[str, str]] = set()
             for record in records:
@@ -254,12 +272,20 @@ class SchedulerService:
                 )
             else:
                 result = ingestion_service.ingest(configuration.source, configuration.identifier)
+            if automatic:
+                succeeded = result.get("status") == "completed"
+                error = None if succeeded else RuntimeError(
+                    f"Automatic ingestion returned status: {result.get('status', 'unknown')}"
+                )
+                self._record_automatic_health(configuration, succeeded=succeeded, error=error)
             logger.info(
                 "scheduler_source_completed",
                 extra={"source": configuration.source, "source_identifier": configuration.identifier},
             )
             return result
         except Exception as exc:
+            if automatic:
+                self._record_automatic_health(configuration, succeeded=False, error=exc)
             logger.exception(
                 "scheduler_source_failed",
                 extra={"source": configuration.source, "source_identifier": configuration.identifier},
@@ -274,6 +300,57 @@ class SchedulerService:
             if session is not None:
                 session.close()
             source_lock.release()
+
+    def _record_automatic_health(
+        self,
+        configuration: SourceConfiguration,
+        succeeded: bool,
+        error: Exception | None = None,
+    ) -> None:
+        session = None
+        try:
+            session = self.session_factory()
+            record = session.query(DiscoveredSource).filter_by(
+                source=configuration.source.lower(),
+                identifier=configuration.identifier,
+            ).first()
+            if record is None:
+                return
+            now = datetime.utcnow()
+            record.last_automatic_ingestion_attempt_at = now
+            if succeeded:
+                record.last_automatic_ingestion_success_at = now
+                record.consecutive_automatic_ingestion_failures = 0
+                record.last_automatic_ingestion_error = None
+            else:
+                record.consecutive_automatic_ingestion_failures += 1
+                record.last_automatic_ingestion_error = self._sanitize_automatic_error(error)
+            session.commit()
+        except Exception:
+            if session is not None:
+                session.rollback()
+            logger.exception(
+                "scheduler_automatic_health_update_failed",
+                extra={"source": configuration.source, "source_identifier": configuration.identifier},
+            )
+        finally:
+            if session is not None:
+                session.close()
+
+    @staticmethod
+    def _sanitize_automatic_error(error: Exception | None) -> str:
+        if error is None:
+            return "Automatic ingestion failed"
+        error_type = type(error).__name__[:80]
+        detail = str(error).splitlines()[0] if str(error) else ""
+        if _STRUCTURED_RESPONSE.search(detail):
+            detail = "remote response rejected"
+        else:
+            detail = _BEARER_VALUE.sub("Bearer [REDACTED]", detail)
+            detail = _SENSITIVE_ERROR_VALUE.sub(r"\1=[REDACTED]", detail)
+            detail = _URL_VALUE.sub("[URL]", detail)
+        message = f"{error_type}: {detail}".strip()
+        return message[:_MAX_AUTOMATIC_INGESTION_ERROR_LENGTH]
 
     def _record_automatic_counts(self, discovery_result: dict[str, Any] | None, results: list[dict[str, Any]]) -> None:
         run_id = discovery_result.get("run_id") if discovery_result else None

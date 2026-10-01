@@ -80,8 +80,15 @@ def test_discovery_is_idempotent_for_same_source_and_identifier():
     try:
         with patch("app.services.source_discovery_service.AshbyConnector.fetch", return_value=[]):
             service.discover([candidate])
+            record = service.db.query(DiscoveredSource).filter_by(source="ashby", identifier="repeatable").one()
+            record.consecutive_automatic_ingestion_failures = 2
+            record.last_automatic_ingestion_error = "temporary failure"
+            service.db.commit()
             service.discover([candidate])
+        record = service.db.query(DiscoveredSource).filter_by(source="ashby", identifier="repeatable").one()
         assert service.db.query(DiscoveredSource).filter_by(source="ashby", identifier="repeatable").count() == 1
+        assert record.consecutive_automatic_ingestion_failures == 2
+        assert record.last_automatic_ingestion_error == "temporary failure"
     finally:
         service.db.close()
         _clean()

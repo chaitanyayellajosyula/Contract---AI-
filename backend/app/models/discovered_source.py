@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -30,3 +30,7 @@ class DiscoveredSource(Base):
     discovery_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_discovered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     provider_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_automatic_ingestion_attempt_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_automatic_ingestion_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    consecutive_automatic_ingestion_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_automatic_ingestion_error: Mapped[str | None] = mapped_column(String(500), nullable=True)

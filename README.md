@@ -58,6 +58,10 @@ npm run dev
 docker compose -f docker/docker-compose.yml up
 ```
 
+### Automatic ingestion
+
+`AUTOMATIC_INGESTION_FAILURE_THRESHOLD` defaults to `3`. It temporarily excludes discovered ATS sources from automatic selection after that many consecutive automatic-ingestion failures. A successful automatic ingestion resets the failure count and makes the source eligible again; the source is not permanently disabled.
+
 ## Project status
 
 The foundation is ready for the next stage of implementation, including domain modeling, API route design, and connector integration architecture.
