@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage'
 import MissionControlPage from './pages/MissionControlPage'
 import JobsPage from './pages/JobsPage'
 import VendorsPage from './pages/VendorsPage'
+import VendorContactsPage from './pages/VendorContactsPage'
 import RecruitersPage from './pages/RecruitersPage'
 import ResumeAIPage from './pages/ResumeAIPage'
 import AnalyticsPage from './pages/AnalyticsPage'
@@ -25,7 +26,7 @@ const router = createBrowserRouter([
       { path: 'submissions', element: <SubmissionsPage /> },
       { path: 'companies', element: <CompaniesPage /> },
       { path: 'vendors', element: <VendorsPage /> },
-      { path: 'vendor-contacts', element: <VendorsPage /> },
+      { path: 'vendor-contacts', element: <VendorContactsPage /> },
       { path: 'recruiters', element: <RecruitersPage /> },
       { path: 'resume-ai', element: <ResumeAIPage /> },
       { path: 'analytics', element: <AnalyticsPage /> },

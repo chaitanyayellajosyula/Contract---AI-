@@ -59,6 +59,101 @@ export type JobFilters = {
   page_size?: number
 }
 
+export type IntelligencePage<T> = {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type IntelligenceContact = {
+  id: number
+  vendor_id: number
+  vendor_name: string
+  full_name: string
+  email: string
+  phone: string | null
+  designation: string | null
+  is_active: boolean
+  updated_at: string
+}
+
+export type IntelligenceJob = {
+  id: number
+  title: string
+  location: string | null
+  employment_type: string | null
+  remote_type: string | null
+  status: string | null
+  source: string | null
+  source_company: string | null
+  external_url: string | null
+  posted_at: string | null
+  created_at: string
+  viewed: boolean
+  saved: boolean
+  hidden: boolean
+}
+
+export type ActivitySummary = {
+  total_jobs: number
+  recent_jobs: number
+  latest_job_date: string | null
+  sources: string[]
+  engagement_types: string[]
+  locations: string[]
+  first_observed_job_activity: string | null
+  last_observed_job_activity: string | null
+  contact_count: number
+  latest_contact_activity: string | null
+}
+
+export type VendorIntelligenceItem = {
+  id: number
+  name: string
+  email: string | null
+  phone: string | null
+  company_id: number | null
+  company_name: string | null
+  company_website: string | null
+  company_industry: string | null
+  company_location: string | null
+  created_at: string
+  updated_at: string
+  contact_count: number
+  job_count: number
+  latest_activity: string | null
+}
+
+export type VendorIntelligenceProfile = {
+  vendor: VendorIntelligenceItem
+  summary: ActivitySummary
+  contacts: IntelligenceContact[]
+  recent_jobs: IntelligenceJob[]
+}
+
+export type CompanyIntelligenceItem = {
+  id: number
+  name: string
+  website: string | null
+  industry: string | null
+  location: string | null
+  created_at: string
+  updated_at: string
+  vendor_count: number
+  job_count: number
+  contact_count: number
+  latest_activity: string | null
+}
+
+export type CompanyIntelligenceProfile = {
+  company: CompanyIntelligenceItem
+  summary: ActivitySummary
+  vendors: VendorIntelligenceItem[]
+  contacts: IntelligenceContact[]
+  recent_jobs: IntelligenceJob[]
+}
+
 export function getAccessToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -108,6 +203,48 @@ export async function fetchVendors() {
 
 export async function fetchVendorContacts() {
   return request<any[]>('/vendor-contacts')
+}
+
+export async function searchVendorIntelligence(q = '', page = 1, pageSize = 25) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  if (q.trim()) params.set('q', q.trim())
+  return request<IntelligencePage<VendorIntelligenceItem>>(`/vendors/intelligence?${params}`)
+}
+
+export async function fetchVendorIntelligence(id: number) {
+  return request<VendorIntelligenceProfile>(`/vendors/${id}/intelligence`)
+}
+
+export async function fetchVendorIntelligenceJobs(
+  id: number,
+  filters: { page?: number; page_size?: number; source?: string; engagement_type?: string; location?: string } = {},
+) {
+  const params = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  })
+  return request<IntelligencePage<IntelligenceJob>>(`/vendors/${id}/jobs?${params}`)
+}
+
+export async function searchCompanyIntelligence(q = '', page = 1, pageSize = 25) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  if (q.trim()) params.set('q', q.trim())
+  return request<IntelligencePage<CompanyIntelligenceItem>>(`/companies/intelligence?${params}`)
+}
+
+export async function fetchCompanyIntelligence(id: number) {
+  return request<CompanyIntelligenceProfile>(`/companies/${id}/intelligence`)
+}
+
+export async function fetchCompanyIntelligenceJobs(
+  id: number,
+  filters: { page?: number; page_size?: number; source?: string; engagement_type?: string; location?: string } = {},
+) {
+  const params = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  })
+  return request<IntelligencePage<IntelligenceJob>>(`/companies/${id}/jobs?${params}`)
 }
 
 export async function fetchJobs(filters: JobFilters = {}) {

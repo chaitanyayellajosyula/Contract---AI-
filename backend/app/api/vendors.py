@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
@@ -6,7 +6,14 @@ from app.core.dependencies import get_db
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.schemas.vendor import VendorCreate, VendorResponse, VendorUpdate
+from app.schemas.vendor_intelligence import (
+    IntelligenceContact,
+    IntelligenceJobPage,
+    VendorIntelligenceProfile,
+    VendorSearchPage,
+)
 from app.services.vendor_service import VendorService
+from app.services.vendor_intelligence_service import VendorIntelligenceService
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
 
@@ -30,6 +37,66 @@ def list_vendors(
     """List vendors in the authenticated user's company."""
     service = VendorService(db)
     return service.list_vendors(current_user)
+
+
+@router.get("/intelligence", response_model=VendorSearchPage)
+def search_vendor_intelligence(
+    q: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> VendorSearchPage:
+    return VendorIntelligenceService(db).search_vendors(current_user, q, page, page_size)
+
+
+@router.get("/{vendor_id}/intelligence", response_model=VendorIntelligenceProfile)
+def get_vendor_intelligence(
+    vendor_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> VendorIntelligenceProfile:
+    profile = VendorIntelligenceService(db).vendor_profile(current_user, vendor_id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vendor not found")
+    return profile
+
+
+@router.get("/{vendor_id}/jobs", response_model=IntelligenceJobPage)
+def get_vendor_jobs(
+    vendor_id: int,
+    source: str | None = None,
+    engagement_type: str | None = None,
+    location: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> IntelligenceJobPage:
+    jobs = VendorIntelligenceService(db).vendor_jobs(
+        current_user,
+        vendor_id,
+        page,
+        page_size,
+        source=source,
+        engagement_type=engagement_type,
+        location=location,
+    )
+    if jobs is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vendor not found")
+    return jobs
+
+
+@router.get("/{vendor_id}/contacts", response_model=list[IntelligenceContact])
+def get_vendor_intelligence_contacts(
+    vendor_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[IntelligenceContact]:
+    contacts = VendorIntelligenceService(db).vendor_contacts(current_user, vendor_id)
+    if contacts is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vendor not found")
+    return contacts
 
 
 @router.get("/{vendor_id}", response_model=VendorResponse)
