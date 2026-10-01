@@ -3,6 +3,51 @@ const TOKEN_KEY = 'contract-hunter-access-token'
 
 export const submissionStatuses = ['SUBMITTED', 'REVIEWING', 'INTERVIEW', 'REJECTED', 'PLACED'] as const
 export type SubmissionStatus = (typeof submissionStatuses)[number]
+export const outreachStatuses = ['DRAFT', 'READY', 'SENT', 'CANCELLED'] as const
+export type OutreachStatus = (typeof outreachStatuses)[number]
+export type OutreachTemplateType = 'candidate_submission' | 'vendor_relationship' | 'follow_up'
+
+export type OutreachEntities = {
+  candidate_id?: number
+  job_id?: number
+  vendor_id?: number
+  contact_id?: number
+}
+
+export type OutreachPreview = {
+  template_type: OutreachTemplateType
+  subject: string
+  body: string
+  recipient_email: string | null
+  evidence: string[]
+}
+
+export type OutreachRecord = {
+  id: number
+  candidate_id: number | null
+  candidate_name: string | null
+  job_id: number | null
+  job_title: string | null
+  vendor_id: number | null
+  vendor_name: string | null
+  contact_id: number | null
+  contact_name: string | null
+  recipient_email: string | null
+  subject: string
+  body: string
+  status: OutreachStatus
+  notes: string | null
+  created_at: string
+  updated_at: string
+  sent_at: string | null
+}
+
+export type OutreachPage = {
+  items: OutreachRecord[]
+  total: number
+  page: number
+  page_size: number
+}
 
 export type Submission = {
   id: number
@@ -361,6 +406,54 @@ export async function fetchCandidateHotlist(filters: {
     if (value !== undefined && value !== '') params.set(key, String(value))
   })
   return request<CandidateHotlistPage>(`/candidates/hotlist?${params}`)
+}
+
+export async function previewOutreachDraft(payload: OutreachEntities & { template_type: OutreachTemplateType }) {
+  return request<OutreachPreview>('/outreach/draft-preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function createOutreachDraft(payload: OutreachEntities & { subject: string; body: string }) {
+  return request<OutreachRecord>('/outreach/drafts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function fetchOutreach(filters: {
+  candidate_id?: number
+  job_id?: number
+  vendor_id?: number
+  contact_id?: number
+  status?: OutreachStatus
+  page?: number
+  page_size?: number
+} = {}) {
+  const params = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined) params.set(key, String(value))
+  })
+  return request<OutreachPage>(`/outreach?${params}`)
+}
+
+export async function updateOutreach(id: number, updates: { subject?: string; body?: string; notes?: string | null; status?: 'DRAFT' | 'READY' }) {
+  return request<OutreachRecord>(`/outreach/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  })
+}
+
+export async function markOutreachSent(id: number) {
+  return request<OutreachRecord>(`/outreach/${id}/mark-sent`, { method: 'POST' })
+}
+
+export async function cancelOutreach(id: number) {
+  return request<OutreachRecord>(`/outreach/${id}/cancel`, { method: 'POST' })
 }
 
 export async function matchCandidateToJob(candidateId: number, jobId: number) {

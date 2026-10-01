@@ -5,6 +5,7 @@ const items = [
   { to: '/companies', label: 'Companies' },
   { to: '/vendors', label: 'Vendors' },
   { to: '/candidates', label: 'Candidate Hotlist' },
+  { to: '/outreach', label: 'Outreach' },
   { to: '/vendor-contacts', label: 'Vendor Contacts' },
   { to: '/jobs', label: 'Jobs' },
   { to: '/submissions', label: 'Submissions' },

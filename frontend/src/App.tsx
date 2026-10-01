@@ -12,6 +12,7 @@ import SettingsPage from './pages/SettingsPage'
 import CompaniesPage from './pages/CompaniesPage'
 import SubmissionsPage from './pages/SubmissionsPage'
 import CandidatesPage from './pages/CandidatesPage'
+import OutreachPage from './pages/OutreachPage'
 
 const router = createBrowserRouter([
   {
@@ -25,6 +26,7 @@ const router = createBrowserRouter([
       { index: true, element: <MissionControlPage /> },
       { path: 'jobs', element: <JobsPage /> },
       { path: 'candidates', element: <CandidatesPage /> },
+      { path: 'outreach', element: <OutreachPage /> },
       { path: 'submissions', element: <SubmissionsPage /> },
       { path: 'companies', element: <CompaniesPage /> },
       { path: 'vendors', element: <VendorsPage /> },
